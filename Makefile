@@ -38,7 +38,27 @@ dev: css ## Rebuild, restart and reload on change (PORT)
 	$(OPAM) yuka dev --build 'dune build --watch' --assets _build/default/client/out --assets static \
 	  -- ./_build/default/server/main.exe --port $(PORT)
 
+.PHONY: bundle
+bundle: build ## Bundle the client with esbuild, served instead of the module tree (a build deletes it)
+	cd _build/default/client/out/client && rm -rf bundle && $(CURDIR)/node_modules/.bin/esbuild main.js \
+	  --bundle --minify --format=esm --splitting --outdir=bundle --metafile=../../meta.json \
+	  --define:__YUKA_DEV__=false --log-level=warning
+
+.PHONY: dist
+dist: bundle ## Stage the server, the client bundle, the stylesheet and the Dockerfile in dist/
+	rm -rf dist && mkdir -p dist/build/client/out/client
+	cp _build/default/server/main.exe Dockerfile dist/
+	cp -r _build/default/client/out/client/bundle dist/build/client/out/client/
+	cp _build/default/client/yuka_islands.json _build/default/client/meta.json dist/build/client/
+	cp -r static dist/
+	chmod -R u+w dist
+
+.PHONY: deploy
+deploy: dist ## Deploy dist/ to Railway
+	cd dist && railway up --ci
+
 .PHONY: clean
 clean: ## Remove the build
 	$(DUNE) clean
 	rm -f static/app.css
+	rm -rf dist

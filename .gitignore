@@ -3,3 +3,4 @@ _opam/
 node_modules/
 static/app.css
 .env
+dist/
