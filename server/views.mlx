@@ -94,12 +94,16 @@ let skeleton_grid ?(landscape = false) ?(count = 10) () =
 
 let slide_class = "min-w-[140px] w-[140px] md:min-w-[180px] md:w-[180px]"
 
+(* The div carries the parent's space-y margin, which the display:contents
+   island drops. *)
 let slider ~me ~title cards =
-  <Yuka.Client>
-    <Slider title>
-      (Yuka.fragment (List.map (fun item -> <div class_=slide_class>(card ~me item)</div>) cards))
-    </Slider>
-  </Yuka.Client>
+  <div>
+    <Yuka.Client>
+      <Slider title>
+        (Yuka.fragment (List.map (fun item -> <div class_=slide_class>(card ~me item)</div>) cards))
+      </Slider>
+    </Yuka.Client>
+  </div>
 
 let slider_loading ~title =
   <div class_="space-y-4 py-4">

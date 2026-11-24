@@ -947,12 +947,16 @@ let show ~id ~season ~(show : Tmdb.show) ~(me : Loaders.me) () =
 
 (* Person and collection *)
 
+(* The island renders with display:contents, which drops the parent's
+   space-y margin, so a plain div carries it. *)
 let back_button =
-  <Yuka.Client>
-    <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors group">
-      (Icons.arrow_left "w-4 h-4") "Back"
-    </Back_button>
-  </Yuka.Client>
+  <div>
+    <Yuka.Client>
+      <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors group">
+        (Icons.arrow_left "w-4 h-4") "Back"
+      </Back_button>
+    </Yuka.Client>
+  </div>
 
 let age birthday =
   match String.split_on_char '-' birthday with
@@ -1090,14 +1094,16 @@ let collection ~id:_ ~(collection : Tmdb.collection) ~me () =
           <div class_="absolute inset-0 bg-gradient-to-r from-brand-bg/80 to-transparent" />
           <div class_="absolute inset-0 flex flex-col justify-end p-6 md:p-16 z-10 max-w-5xl">
             <div class_="space-y-4 animate-[fadeIn_0.5s_ease_both]">
-              <Yuka.Client>
-                <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors group mb-2">
-                  <div class_="w-8 h-8 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center transition-colors">
-                    (Icons.arrow_left "w-4 h-4")
-                  </div>
-                  <span class_="text-sm font-medium">"Back"</span>
-                </Back_button>
-              </Yuka.Client>
+              <div>
+                <Yuka.Client>
+                  <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors group mb-2">
+                    <div class_="w-8 h-8 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center transition-colors">
+                      (Icons.arrow_left "w-4 h-4")
+                    </div>
+                    <span class_="text-sm font-medium">"Back"</span>
+                  </Back_button>
+                </Yuka.Client>
+              </div>
               <h1 class_="text-4xl sm:text-5xl md:text-6xl font-display font-bold tracking-tight leading-tight text-white drop-shadow-2xl">
                 (Yuka.text info.collection_name)
               </h1>
