@@ -1,0 +1,5 @@
+(* Puts the title at the front of the watch history. Shows nothing. *)
+
+let[@client] make ~(kind : Model.kind) ~(id : int) ~(play : Model.play) () =
+  Yuka.Effect.after (fun () -> Saved.History.record { kind; id } play);
+  Yuka.empty

@@ -1,0 +1,254 @@
+(* The top of the watch page: the bar with the stream provider, auto-play, fullscreen
+   and watchlist buttons, the player, and for a show the bar that moves between
+   episodes. Keys: F for fullscreen, the arrows for the previous and next episode. *)
+
+open Model
+
+let frame_id = "cinepulse-player"
+
+let[@client] make ~(kind : Model.kind) ~(id : int) ~(title : string) ~(episode_title : string option)
+    ~(season : int) ~(episode : int) ~(seasons : Model.choice list) ~(episodes : Model.episode list)
+    ~(providers : Model.provider list) ~(provider : string) ~(autoplay : bool) ~(backdrop : string option)
+    ~(saved : bool) ~(prev : string option) ~(next : string option) () =
+  let is_tv = kind = Tv in
+  let chosen = Yuka.State.make provider in
+  let current () =
+    let id = Yuka.State.get chosen in
+    match List.find_opt (fun (p : provider) -> p.id = id) providers with
+    | Some p -> p
+    | None -> List.hd providers
+  in
+  let menu = Yuka.State.make false in
+  let loaded = Yuka.State.make false in
+  let fullscreen = Yuka.State.make false in
+  let picker = Yuka.State.make false in
+  let autoplay = Yuka.State.make autoplay in
+  let go url = Yuka.Browser.navigate url in
+  let toggle_fullscreen () = !Bridge.toggle_fullscreen frame_id in
+  let choose (p : provider) =
+    ignore (Yuka.Browser.set_cookie ~max_age:Saved.year Saved.Player.provider p.id);
+    Yuka.State.set chosen p.id;
+    Yuka.State.set menu false;
+    Yuka.State.set loaded false
+  in
+  let toggle_autoplay () =
+    Yuka.State.update autoplay not;
+    ignore
+      (Yuka.Browser.set_cookie ~max_age:Saved.year Saved.Player.autoplay
+         (if Yuka.State.peek autoplay then "1" else "0"))
+  in
+  (* The loading screen goes when the frame loads, or after 4 s at most. *)
+  Yuka.Effect.after ~cleanup:(fun cancel -> cancel ()) (fun () ->
+      ignore (Yuka.State.get chosen);
+      !Bridge.after 4000 (fun () -> Yuka.State.set loaded true));
+  Yuka.Effect.after ~cleanup:(fun stop -> stop ()) (fun () ->
+      !Bridge.on_document "fullscreenchange" (fun () -> Yuka.State.set fullscreen (!Bridge.is_fullscreen ())));
+  Yuka.Effect.after (fun () ->
+      Yuka.Browser.on_window "keydown" (fun event ->
+          match Yuka.Event.target_tag event with
+          | "input" | "select" | "textarea" -> ()
+          | _ -> (
+              match Yuka.Event.key event with
+              | "ArrowRight" -> Option.iter go next
+              | "ArrowLeft" -> Option.iter go prev
+              | "f" | "F" -> toggle_fullscreen ()
+              | _ -> ())));
+  (* Some players post a message when the video ends: with auto-play on, the next
+     episode starts. *)
+  Yuka.Effect.after (fun () ->
+      match next with
+      | Some url when Yuka.State.get autoplay ->
+          Yuka.Browser.on_window "message" (fun event -> if !Bridge.is_ended_message event then go url)
+      | _ -> ());
+  let episode_label = Printf.sprintf "S%d E%d" season episode in
+  let season_select class_name =
+    <select aria_label="Season" class_=class_name on_change=(fun event -> go (Yuka.Event.target_value event))>
+      (Yuka.fragment
+         (List.map
+            (fun (choice : choice) -> <option value=choice.url selected=choice.selected class_="bg-gray-900">(Yuka.text choice.label)</option>)
+            seasons))
+    </select>
+  in
+  <div>
+    <header class_="flex items-center justify-between px-6 py-4 bg-black/60 backdrop-blur-md border-b border-white/5 sticky top-0 z-30">
+      <div class_="flex items-center gap-4">
+        <button type_=`button title="Go back" on_click=(fun _ -> Yuka.Browser.back ())
+          class_="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+          <div class_="w-9 h-9 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center transition-colors">
+            (Icons.arrow_left "w-4 h-4")
+          </div>
+          <span class_="text-sm font-medium hidden sm:block">"Back"</span>
+        </button>
+        <a href=(Routes.home ()) title="Go to Home" class_="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+          <div class_="w-9 h-9 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center transition-colors">
+            (Icons.home "w-4 h-4")
+          </div>
+          <span class_="text-sm font-medium hidden sm:block">"Home"</span>
+        </a>
+        <div class_="w-px h-6 bg-white/10 hidden lg:block mx-2" />
+        <a href=(Routes.home ()) class_="hidden lg:flex items-center gap-2 group">
+          <div class_="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-lg shadow-brand-primary/20 group-hover:scale-105 transition-transform">
+            (Icons.flame "w-4 h-4 text-white fill-white")
+          </div>
+          <span class_="text-lg font-display font-bold text-white">"Cine" <span class_="text-brand-primary">"Pulse"</span></span>
+        </a>
+      </div>
+      <div class_="flex-1 px-6 min-w-0">
+        <h1 class_="text-white font-display font-bold text-lg truncate">
+          (Yuka.text title)
+          (match episode_title with
+           | Some name when is_tv -> <span class_="text-gray-400 font-medium">(Yuka.text (" - " ^ name))</span>
+           | _ -> Yuka.empty)
+        </h1>
+        (if is_tv then
+           <p class_="text-brand-primary text-xs font-medium">(Yuka.text ("Season " ^ Int.to_string season ^ {js| · Episode |js} ^ Int.to_string episode))</p>
+         else Yuka.empty)
+      </div>
+      <div class_="flex items-center gap-2">
+        <div class_="relative">
+          <button type_=`button title="Switch Stream Provider" aria_expanded=(Yuka.State.get menu)
+            on_click=(fun _ -> Yuka.State.update menu not)
+            class_="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all border border-white/5">
+            (Icons.radio "w-4 h-4 text-brand-primary")
+            <span class_="hidden sm:block">(Yuka.text (current ()).name)</span>
+          </button>
+          (if Yuka.State.get menu then
+             <div class_="absolute right-0 top-full mt-2 w-48 bg-nav-bg border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-[pop_0.15s_ease_both]">
+               <div class_="p-2 border-b border-white/5">
+                 <p class_="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-2">"Stream Source"</p>
+               </div>
+               (Yuka.fragment
+                  (List.map
+                     (fun (p : provider) ->
+                       let active = p.id = (current ()).id in
+                       <button type_=`button on_click=(fun _ -> choose p)
+                         class_=(if active then
+                                   "w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors text-left bg-brand-primary/15 text-brand-primary font-semibold"
+                                 else
+                                   "w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors text-left text-gray-400 hover:text-white hover:bg-white/5")>
+                         <div class_="flex items-center gap-3">
+                           <span class_=(if active then "w-1.5 h-1.5 rounded-full shrink-0 bg-brand-primary"
+                                         else "w-1.5 h-1.5 rounded-full shrink-0 bg-gray-600") />
+                           (Yuka.text p.name)
+                         </div>
+                         (if p.id = "vidsrc" then
+                            <span class_="text-[10px] bg-yellow-500/20 text-yellow-500 font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0 ml-2">
+                              (Icons.star "w-3 h-3 fill-yellow-500") "Best"
+                            </span>
+                          else Yuka.empty)
+                       </button>)
+                     providers))
+             </div>
+           else Yuka.empty)
+        </div>
+        (if is_tv then
+           <button type_=`button title="Auto-Play Next Episode (Binge Mode)" on_click=(fun _ -> toggle_autoplay ())
+             class_=(if Yuka.State.get autoplay then
+                       "hidden md:flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all border bg-brand-primary/20 text-brand-primary border-brand-primary/30"
+                     else
+                       "hidden md:flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all border bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/5")>
+             (if Yuka.State.get autoplay then Icons.toggle_right "w-5 h-5 text-brand-primary" else Icons.toggle_left "w-5 h-5 text-gray-500")
+             <span>"Auto-Play"</span>
+           </button>
+         else Yuka.empty)
+        <button type_=`button title="Toggle Fullscreen" on_click=(fun _ -> toggle_fullscreen ())
+          class_="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all">
+          (if Yuka.State.get fullscreen then Icons.minimize "w-4 h-4" else Icons.maximize "w-4 h-4")
+          <span class_="hidden sm:block">(Yuka.text (if Yuka.State.get fullscreen then "Exit Fullscreen" else "Fullscreen"))</span>
+        </button>
+        <Watchlist_button kind id saved style=Toolbar refresh=false />
+      </div>
+    </header>
+    <div id=frame_id
+      class_=(if Yuka.State.get fullscreen then "w-full bg-black relative flex flex-col group h-screen"
+              else "w-full bg-black relative flex flex-col group aspect-video max-h-[calc(100vh-64px)]")>
+      (if Yuka.State.get loaded then Yuka.empty
+       else
+         <div class_="absolute inset-0 flex flex-col items-center justify-center bg-black z-10 gap-6">
+           (match backdrop with
+            | Some src -> <img src alt="" class_="absolute inset-0 w-full h-full object-cover opacity-15" />
+            | None -> Yuka.empty)
+           <div class_="relative z-10 flex flex-col items-center gap-4">
+             <div class_="w-16 h-16 rounded-full border-4 border-white/10 border-t-brand-primary animate-spin" />
+             <p class_="text-gray-300 font-medium">"Connecting to stream..."</p>
+             (if is_tv then <p class_="text-gray-500 text-sm">(Yuka.text episode_label)</p> else Yuka.empty)
+           </div>
+         </div>)
+      <div class_="flex-1 w-full relative">
+        <iframe src=(current ()).url title=("Watch " ^ title) referrerpolicy=`origin allowfullscreen=true
+          allow="autoplay; fullscreen; encrypted-media; picture-in-picture; xr-spatial-tracking"
+          on_load=(fun _ -> Yuka.State.set loaded true)
+          class_="w-full h-full border-none absolute inset-0" />
+      </div>
+      <div class_=(if Yuka.State.get picker || Yuka.State.get fullscreen then
+                     "absolute top-0 left-0 right-0 p-4 flex justify-end gap-3 pointer-events-none transition-opacity duration-300 z-30 opacity-100"
+                   else
+                     "absolute top-0 left-0 right-0 p-4 flex justify-end gap-3 pointer-events-none transition-opacity duration-300 z-30 opacity-0 group-hover:opacity-100")>
+        (if is_tv then
+           <button type_=`button on_click=(fun _ -> Yuka.State.update picker not)
+             class_="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 pointer-events-auto border border-white/10 transition-colors">
+             (Icons.list "w-4 h-4") "Episodes"
+           </button>
+         else Yuka.empty)
+        <button type_=`button title="Toggle Fullscreen" on_click=(fun _ -> toggle_fullscreen ())
+          class_="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white p-2 rounded-lg pointer-events-auto border border-white/10 transition-colors">
+          (if Yuka.State.get fullscreen then Icons.minimize "w-5 h-5" else Icons.maximize "w-5 h-5")
+        </button>
+      </div>
+      (if Yuka.State.get picker && is_tv then
+         <div class_="absolute top-16 right-4 w-[calc(100vw-2rem)] sm:w-80 max-h-[calc(100%-5rem)] bg-black/90 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col z-40 pointer-events-auto shadow-2xl animate-[slideIn_0.2s_ease_both]">
+           <div class_="p-4 border-b border-white/10 bg-black/50">
+             (season_select "w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-primary cursor-pointer")
+           </div>
+           <div class_="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1">
+             (Yuka.fragment
+                (List.map
+                   (fun (ep : Model.episode) ->
+                     let active = ep.number = episode in
+                     <a href=(Routes.watch ~kind ~id ~season ~episode:ep.number ())
+                       class_=(if active then "w-full flex items-center gap-3 px-3 py-2 text-left transition-all rounded-lg hover:bg-white/10 bg-brand-primary/20 text-brand-primary"
+                               else "w-full flex items-center gap-3 px-3 py-2 text-left transition-all rounded-lg hover:bg-white/10")>
+                       <div class_="shrink-0 w-8 text-center"><span class_="text-xs font-bold">(Yuka.int ep.number)</span></div>
+                       <div class_="flex-1 min-w-0">
+                         <p class_=(if active then "text-sm font-medium line-clamp-1 text-white" else "text-sm font-medium line-clamp-1 text-gray-300")>
+                           (Yuka.text ep.name)
+                         </p>
+                       </div>
+                       (if active then Icons.play "w-3 h-3 fill-current shrink-0" else Yuka.empty)
+                     </a>)
+                   episodes))
+           </div>
+         </div>
+       else Yuka.empty)
+    </div>
+    (if is_tv then
+       <div class_="bg-black/80 border-b border-white/5 px-6 py-3 flex items-center justify-between gap-4 sticky top-[65px] z-20 backdrop-blur-md">
+         (match prev with
+          | Some href ->
+              <a href class_="flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition-all bg-white/5 hover:bg-white/10 text-white">
+                (Icons.skip_back "w-4 h-4") "Prev"
+              </a>
+          | None ->
+              <span aria_disabled=true class_="flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition-all opacity-30 cursor-not-allowed text-gray-600">
+                (Icons.skip_back "w-4 h-4") "Prev"
+              </span>)
+         <div class_="flex items-center gap-3 overflow-x-auto no-scrollbar">
+           (season_select "bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-primary cursor-pointer")
+           <span class_="text-gray-400 text-sm font-medium shrink-0">
+             "Episode " <span class_="text-white font-bold">(Yuka.int episode)</span>
+             (if episodes <> [] then <span class_="text-gray-600">(Yuka.text (Printf.sprintf " / %d" (List.length episodes)))</span>
+              else Yuka.empty)
+           </span>
+         </div>
+         (match next with
+          | Some href ->
+              <a href class_="flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition-all bg-brand-primary hover:bg-red-700 text-white font-medium shadow-lg shadow-brand-primary/20">
+                "Next " (Icons.skip_forward "w-4 h-4")
+              </a>
+          | None ->
+              <span aria_disabled=true class_="flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition-all opacity-30 cursor-not-allowed text-gray-600 bg-white/5">
+                "Next " (Icons.skip_forward "w-4 h-4")
+              </span>)
+       </div>
+     else Yuka.empty)
+  </div>

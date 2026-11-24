@@ -1,0 +1,14 @@
+(* Loads [next], the same list with one more page, when the end of the list comes into
+   view. The URL keeps the number of pages, so a reload or Back shows them all. *)
+
+let[@client] make ~(next : string option) () =
+  Yuka.with_unique_id (fun id ->
+      Yuka.Effect.after ~cleanup:(fun stop -> stop ()) (fun () ->
+          match next with
+          | Some url -> !Bridge.on_visible id (fun () -> Yuka.Browser.navigate ~replace:true ~keep_scroll:true url)
+          | None -> fun () -> ());
+      <div id class_="h-20 flex items-center justify-center">
+        (match next with
+         | Some _ -> <div class_="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-primary" />
+         | None -> Yuka.empty)
+      </div>)

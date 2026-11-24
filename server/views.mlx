@@ -1,0 +1,226 @@
+(* Parts that several pages show. They render on the server only; the interactive
+   parts in them are islands of the shared library. *)
+
+open App_shared
+
+let async = Yuka_dream.to_async
+let image = Tmdb.image
+let rating value = Printf.sprintf "%.1f" value
+let take n list = List.filteri (fun index _ -> index < n) list
+
+let href (card : Tmdb.card) =
+  match card.kind with Movie -> Routes.movie ~id:card.id () | Tv -> Routes.show ~id:card.id ()
+
+let saved (me : Loaders.me) (card : Tmdb.card) = Saved.Watchlist.mem { Saved.kind = card.kind; id = card.id } me.watchlist
+
+let runtime minutes = Printf.sprintf "%dh %dm" (minutes / 60) (minutes mod 60)
+
+(* "$1,234,567" *)
+let dollars amount =
+  let digits = Int.to_string amount in
+  let length = String.length digits in
+  let buffer = Buffer.create (length + 4) in
+  String.iteri
+    (fun index digit ->
+      if index > 0 && (length - index) mod 3 = 0 then Buffer.add_char buffer ',';
+      Buffer.add_char buffer digit)
+    digits;
+  "$" ^ Buffer.contents buffer
+
+let year_of date = if String.length date >= 4 then String.sub date 0 4 else ""
+
+let watchlist_button ~me ?(style = Model.Card) ?(refresh = false) (card : Tmdb.card) =
+  <Yuka.Client>
+    <Watchlist_button kind=card.kind id=card.id saved=(saved me card) style refresh />
+  </Yuka.Client>
+
+let grid_class = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
+
+(* A movie or a show: its poster (its backdrop with [landscape]), a link to its page,
+   a trailer button for a movie and a watchlist button. *)
+let card ~me ?(landscape = false) ?(badge = false) ?(refresh = false) (card : Tmdb.card) =
+  <div class_="relative group">
+    <a href=(href card) class_="block">
+      <div class_=(if landscape then
+                     "relative cursor-pointer overflow-hidden rounded-xl bg-card-bg aspect-video transition-transform duration-300 group-hover:scale-105 active:scale-95"
+                   else
+                     "relative cursor-pointer overflow-hidden rounded-xl bg-card-bg aspect-[2/3] transition-transform duration-300 group-hover:scale-105 active:scale-95")>
+        <img src=(image (if landscape then card.backdrop else card.poster)) alt=card.title loading=`lazy_
+          class_="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        <div class_="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+          (if badge && card.kind = Tv then
+             <div class_="flex items-center gap-1 mb-1">
+               (Icons.tv "w-3 h-3 text-brand-primary")
+               <span class_="text-xs text-brand-primary font-bold uppercase">"TV"</span>
+             </div>
+           else Yuka.empty)
+          <h3 class_="font-semibold text-sm line-clamp-1">(Yuka.text card.title)</h3>
+          <div class_="flex items-center space-x-2 mt-1">
+            (Icons.star "w-3 h-3 text-yellow-500 fill-yellow-500")
+            <span class_="text-xs font-medium">(Yuka.text (rating card.rating))</span>
+          </div>
+        </div>
+      </div>
+    </a>
+    <div class_="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+      (match card.kind with
+       | Movie ->
+           <a href=(Routes.trailer ~id:card.id ()) title="Play trailer" aria_label=("Play the trailer of " ^ card.title)
+             class_="p-4 rounded-full bg-brand-primary text-white shadow-2xl scale-0 group-hover:scale-100 transition-transform duration-300 pointer-events-auto hover:scale-110 active:scale-90">
+             (Icons.play "w-6 h-6 fill-white")
+           </a>
+       | Tv ->
+           <div class_="p-4 rounded-full bg-brand-primary text-white shadow-2xl scale-0 group-hover:scale-100 transition-transform duration-300">
+             (Icons.play "w-6 h-6 fill-white")
+           </div>)
+    </div>
+    (watchlist_button ~me ~refresh card)
+  </div>
+
+let skeleton ?(landscape = false) () =
+  <div class_=(if landscape then "animate-pulse rounded-xl bg-gray-800 aspect-video" else "animate-pulse rounded-xl bg-gray-800 aspect-[2/3]") />
+
+let skeleton_grid ?(landscape = false) ?(count = 10) () =
+  <div class_=(if landscape then "grid gap-6 grid-cols-1" else grid_class)>
+    (Yuka.fragment (List.init count (fun _ -> skeleton ~landscape ())))
+  </div>
+
+let slide_class = "min-w-[140px] w-[140px] md:min-w-[180px] md:w-[180px]"
+
+let slider ~me ~title cards =
+  <Yuka.Client>
+    <Slider title>
+      (Yuka.fragment (List.map (fun item -> <div class_=slide_class>(card ~me item)</div>) cards))
+    </Slider>
+  </Yuka.Client>
+
+let slider_loading ~title =
+  <div class_="space-y-4 py-4">
+    <div class_="flex items-center justify-between px-2">
+      <h2 class_="text-xl font-display font-semibold tracking-tight text-white">(Yuka.text title)</h2>
+    </div>
+    <div class_="flex space-x-4 overflow-x-auto no-scrollbar px-2 pb-4">
+      (Yuka.fragment (List.init 8 (fun _ -> <div class_=slide_class>(skeleton ())</div>)))
+    </div>
+  </div>
+
+(* A row of titles that streams in when TMDB answers. *)
+let slider_of ~me ~title list =
+  <Yuka.Await async=list loading=(slider_loading ~title) failed=(fun _ -> Yuka.empty)>
+    (fun (page : Tmdb.card Tmdb.page) -> slider ~me ~title page.results)
+  </Yuka.Await>
+
+let spinner =
+  <div class_="flex items-center justify-center h-[60vh]">
+    <div class_="animate-spin rounded-full h-12 w-12 border-t-2 border-brand-primary" />
+  </div>
+
+let could_not_load =
+  <div class_="text-center py-20 space-y-2">
+    <p class_="text-gray-400 text-xl font-light">"Could not reach TMDB."</p>
+    (if Tmdb.configured () then Yuka.empty
+     else <p class_="text-gray-500 text-sm">"Set TMDB_API_KEY in the environment or in .env, then restart the server."</p>)
+  </div>
+
+(* A value of TMDB that the page waits for, with [spinner] until it comes. *)
+let await ?(blocking = `Yes) ?(loading = spinner) promise view =
+  <Yuka.Await async=(async promise) blocking loading failed=(fun _ -> could_not_load)>(fun value -> view value)</Yuka.Await>
+
+let pill ~current ~href:url label =
+  <a href=url data_yuka_keep_scroll=""
+    class_=(if current then "px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all bg-brand-primary text-white"
+            else "px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all bg-white/5 text-gray-400 hover:bg-white/10")>
+    (Yuka.text label)
+  </a>
+
+let select_class =
+  "bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary cursor-pointer [&>option]:bg-gray-900"
+
+let filter ~label options =
+  <Yuka.Client><Nav_select label options class_name=select_class keep_scroll=true /></Yuka.Client>
+
+let choices current options link : Model.choice list =
+  List.map (fun (value, label) -> { Model.label; url = link value; selected = value = current }) options
+
+let person_photo ?(size = "w500") profile = image ~size profile
+
+let cast_list (cast : Tmdb.credit list) =
+  <div class_="flex flex-wrap gap-5">
+    (Yuka.fragment
+       (List.map
+          (fun (person : Tmdb.credit) ->
+            <a href=(Routes.person ~id:person.person_id ()) class_="text-center group w-28">
+              <div class_="w-28 h-28 rounded-full overflow-hidden mb-3 border-2 border-white/5 group-hover:border-brand-primary transition-colors mx-auto">
+                <img src=(person_photo person.profile) alt=person.name loading=`lazy_
+                  class_="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+              </div>
+              <p class_="font-semibold text-sm group-hover:text-brand-primary transition-colors leading-tight">(Yuka.text person.name)</p>
+              <p class_="text-xs text-gray-500 line-clamp-1 italic mt-0.5">(Yuka.text person.role)</p>
+            </a>)
+          (take 12 cast)))
+  </div>
+
+let info_row ~label value =
+  <div>
+    <p class_="text-gray-500 text-[10px] uppercase tracking-widest font-bold">(Yuka.text label)</p>
+    value
+  </div>
+
+let people_links (people : Tmdb.credit list) =
+  <div class_="flex flex-wrap gap-2 mt-1">
+    (Yuka.fragment
+       (List.map
+          (fun (person : Tmdb.credit) ->
+            <a href=(Routes.person ~id:person.person_id ()) class_="text-brand-primary hover:underline text-base font-medium">
+              (Yuka.text person.name)
+            </a>)
+          people))
+  </div>
+
+let imdb_row = function
+  | Some id ->
+      info_row ~label:"IMDB"
+        <a href=("https://www.imdb.com/title/" ^ id) target=`_blank rel="noopener noreferrer"
+          class_="text-brand-primary hover:underline text-xs font-mono break-all">(Yuka.text id)</a>
+  | None -> Yuka.empty
+
+let similar_grid ~title (cards : Tmdb.card list) =
+  <section class_="space-y-4">
+    <h3 class_="text-xl font-display font-bold tracking-tight px-2">(Yuka.text title)</h3>
+    <div class_="grid grid-cols-2 gap-4">
+      (Yuka.fragment
+         (List.map
+            (fun (item : Tmdb.card) ->
+              <a href=(href item) class_="group cursor-pointer">
+                <div class_="aspect-[2/3] rounded-xl overflow-hidden mb-2">
+                  <img src=(image item.poster) alt=item.title loading=`lazy_
+                    class_="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                </div>
+                <p class_="text-xs font-semibold line-clamp-1">(Yuka.text item.title)</p>
+              </a>)
+            (take 4 cards)))
+    </div>
+  </section>
+
+let trailer_section = function
+  | Some key ->
+      <section>
+        <h2 class_="text-3xl font-display font-bold mb-6 tracking-tight">"Trailer"</h2>
+        <div class_="aspect-video w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl">
+          <iframe src=(Tmdb.youtube key) title="Trailer" loading=`lazy_ class_="w-full h-full border-none" allowfullscreen=true />
+        </div>
+      </section>
+  | None -> Yuka.empty
+
+let empty_state ~icon ~title ~text =
+  <div class_="flex flex-col items-center justify-center h-[70vh] space-y-4 text-center">
+    <div class_="w-20 h-20 bg-brand-primary/10 rounded-full flex items-center justify-center">icon</div>
+    <h1 class_="text-3xl font-display font-bold">(Yuka.text title)</h1>
+    <p class_="text-gray-400 max-w-md font-light">(Yuka.text text)</p>
+  </div>
+
+(* The saved titles that TMDB still has, in order, each with what was saved for it. *)
+let with_media (items : ('a * Saved.item) list) =
+  Lwt_list.filter_map_p
+    (fun (extra, (item : Saved.item)) -> Lwt.map (Option.map (fun media -> (extra, media))) (Tmdb.media_opt item.kind item.id))
+    items

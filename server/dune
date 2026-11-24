@@ -1,0 +1,25 @@
+(library
+ (name app_server)
+ (modules tmdb providers loaders views pages yuka_routes)
+ (libraries app_shared yuka yuka-dream dream lwt lwt.unix http-lwt-client unix)
+ (preprocess
+  (pps yuka.ppx)))
+
+(rule
+ (targets yuka_routes.ml)
+ (action
+  (with-stdout-to
+   yuka_routes.ml
+   (run
+    %{bin:yuka}
+    routes
+    --server
+    --shared-module
+    App_shared.Routes
+    --source
+    %{dep:../Routes.ml}))))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries app_server yuka yuka-dream dream))

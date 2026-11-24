@@ -1,0 +1,5 @@
+(* Adds a query that found results to the recent searches. Shows nothing. *)
+
+let[@client] make ~(query : string) () =
+  Yuka.Effect.after (fun () -> Saved.Searches.remember query);
+  Yuka.empty

@@ -1,0 +1,40 @@
+(* Adds a title to the watchlist or removes it. [refresh] loads the page again after,
+   for pages that list the watchlist. *)
+
+let[@client] make ~(kind : Model.kind) ~(id : int) ~(saved : bool) ~(style : Model.button_style)
+    ~(refresh : bool) () =
+  let saved = Yuka.State.make saved in
+  let toggle event =
+    Yuka.Event.prevent_default event;
+    Yuka.Event.stop_propagation event;
+    Yuka.State.set saved (Saved.Watchlist.toggle { kind; id });
+    if refresh then Yuka.Browser.refresh ()
+  in
+  match style with
+  | Card ->
+      <button type_=`button on_click=toggle
+        title=(if Yuka.State.get saved then "Remove from Watchlist" else "Add to Watchlist")
+        class_=(if Yuka.State.get saved then
+                  "absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all duration-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 z-10 bg-brand-primary text-white scale-110"
+                else
+                  "absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all duration-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 z-10 bg-black/50 text-white hover:bg-white/20 hover:scale-110")>
+        (if Yuka.State.get saved then Icons.check "w-4 h-4" else Icons.plus "w-4 h-4")
+      </button>
+  | Hero ->
+      <button type_=`button on_click=toggle
+        class_=(if Yuka.State.get saved then
+                  "px-10 py-4 rounded-xl font-bold flex items-center justify-center space-x-2 transition-all duration-300 border backdrop-blur-xl hover:scale-105 bg-white/20 text-white border-white/40"
+                else
+                  "px-10 py-4 rounded-xl font-bold flex items-center justify-center space-x-2 transition-all duration-300 border backdrop-blur-xl hover:scale-105 bg-white/10 text-white border-white/10 hover:bg-white/20")>
+        (if Yuka.State.get saved then Icons.circle_check "w-5 h-5" else Icons.heart "w-5 h-5")
+        <span>(Yuka.text (if Yuka.State.get saved then "In Watchlist" else "Add to Watchlist"))</span>
+      </button>
+  | Toolbar ->
+      <button type_=`button on_click=toggle
+        class_=(if Yuka.State.get saved then
+                  "flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all bg-brand-primary/20 text-brand-primary border border-brand-primary/30"
+                else
+                  "flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white")>
+        (if Yuka.State.get saved then Icons.circle_check "w-4 h-4" else Icons.heart "w-4 h-4")
+        <span class_="hidden sm:block">(Yuka.text (if Yuka.State.get saved then "Saved" else "Watchlist"))</span>
+      </button>

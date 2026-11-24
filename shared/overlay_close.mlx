@@ -1,0 +1,15 @@
+(* Closes the dialog of an overlay route: the backdrop behind it, or its close button,
+   which also listens for Escape. *)
+
+let[@client] make ~(backdrop : bool) () =
+  if backdrop then
+    <div class_="absolute inset-0 bg-black/90 backdrop-blur-sm animate-[fadeIn_0.2s_ease_both]"
+      on_click=(fun _ -> Yuka.Browser.back ()) />
+  else begin
+    Yuka.Effect.after (fun () ->
+        Yuka.Browser.on_window "keydown" (fun event -> if Yuka.Event.key event = "Escape" then Yuka.Browser.back ()));
+    <button type_=`button aria_label="Close" on_click=(fun _ -> Yuka.Browser.back ())
+      class_="p-2 rounded-full bg-black/50 hover:bg-black/80 text-white transition-colors">
+      (Icons.x "w-6 h-6")
+    </button>
+  end

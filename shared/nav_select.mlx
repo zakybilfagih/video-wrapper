@@ -1,0 +1,11 @@
+(* A select whose options are pages: choosing one loads it. *)
+
+let[@client] make ~(label : string) ~(options : Model.choice list) ~(class_name : string) ~(keep_scroll : bool) () =
+  <select aria_label=label class_=class_name
+    on_change=(fun event -> Yuka.Browser.navigate ~keep_scroll (Yuka.Event.target_value event))>
+    (Yuka.fragment
+       (List.map
+          (fun (choice : Model.choice) ->
+            <option value=choice.url selected=choice.selected class_="bg-gray-900">(Yuka.text choice.label)</option>)
+          options))
+  </select>

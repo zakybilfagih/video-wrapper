@@ -1,0 +1,6 @@
+let[@client] make () =
+  <button type_=`button on_click=(fun _ -> Saved.History.clear (); Yuka.Browser.refresh ())
+    class_="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-brand-primary rounded-xl transition-all border border-white/10">
+    (Icons.trash "w-4 h-4")
+    <span class_="font-semibold text-sm">"Clear History"</span>
+  </button>

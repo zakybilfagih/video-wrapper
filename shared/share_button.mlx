@@ -1,0 +1,5 @@
+let[@client] make ~(title : string) () =
+  <button type_=`button title="Share" aria_label="Share" on_click=(fun _ -> !Bridge.share title)
+    class_="px-6 py-4 rounded-xl font-bold flex items-center justify-center transition-all duration-300 border border-white/10 bg-white/5 hover:bg-white/10 text-white hover:scale-105">
+    (Icons.share "w-5 h-5")
+  </button>

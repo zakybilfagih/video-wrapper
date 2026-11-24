@@ -1,0 +1,106 @@
+(* The sidebar, and on small screens the top bar with the button that opens it. It
+   marks the link of the current page and counts the watchlist. *)
+
+type link = { label : string; href : string; icon : string -> Yuka.client Yuka.element; current : Routes.t -> bool }
+
+let links =
+  [
+    { label = "Home"; href = Routes.home (); icon = Icons.home; current = (function Routes.Home -> true | _ -> false) };
+    { label = "Movies"; href = Routes.browse (); icon = Icons.compass; current = (function Routes.Browse _ -> true | _ -> false) };
+    { label = "TV Shows"; href = Routes.tv_shows (); icon = Icons.tv; current = (function Routes.Tv_shows _ -> true | _ -> false) };
+    { label = "Search"; href = Routes.search (); icon = Icons.search; current = (function Routes.Search _ -> true | _ -> false) };
+    { label = "Watchlist"; href = Routes.watchlist (); icon = Icons.heart; current = (function Routes.Watchlist -> true | _ -> false) };
+    { label = "History"; href = Routes.history (); icon = Icons.history; current = (function Routes.History -> true | _ -> false) };
+    { label = "Analytics"; href = Routes.stats (); icon = Icons.chart; current = (function Routes.Stats -> true | _ -> false) };
+  ]
+
+let logo ~size =
+  <div class_="flex items-center gap-3">
+    <div class_=(if size = `Big then
+                   "w-9 h-9 rounded-xl bg-brand-primary flex items-center justify-center shadow-lg shadow-brand-primary/40 ring-1 ring-brand-primary/30"
+                 else "w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-lg shadow-brand-primary/30")>
+      (Icons.flame "w-5 h-5 text-white fill-white")
+    </div>
+    <span class_=(if size = `Big then "text-2xl font-display font-bold tracking-tight text-white"
+                  else "text-xl font-display font-bold tracking-tight text-white")>
+      "Cine" <span class_="text-brand-primary">"Pulse"</span>
+    </span>
+  </div>
+
+(* The layout stays across client navigations and takes no data from the server, so the
+   watchlist count comes from the cookie when the island starts. *)
+let[@client] make () =
+  let open_ = Yuka.State.make false in
+  let count = Yuka.State.make 0 in
+  let route = Routes.current () in
+  Yuka.Effect.on_change route (fun ~prev:_ ~next:_ -> Yuka.State.set open_ false);
+  Yuka.Effect.after (fun () ->
+      Yuka.State.set count (Saved.Watchlist.count ());
+      Yuka.Browser.on_window Saved.Watchlist.changed (fun _ -> Yuka.State.set count (Saved.Watchlist.count ())));
+  let current link = match Yuka.State.get route with Some route -> link.current route | None -> false in
+  <div>
+    <div class_="md:hidden fixed top-0 left-0 right-0 h-16 bg-nav-bg border-b border-white/5 flex items-center justify-between px-4 z-40 shadow-lg">
+      <a href=(Routes.home ())>(logo ~size:`Small)</a>
+      <button type_=`button aria_label="Menu" aria_expanded=(Yuka.State.get open_)
+        on_click=(fun _ -> Yuka.State.update open_ not)
+        class_="p-2 text-white bg-white/5 rounded-lg border border-white/10">
+        (if Yuka.State.get open_ then Icons.x "w-6 h-6" else Icons.menu "w-6 h-6")
+      </button>
+    </div>
+    <nav class_=(if Yuka.State.get open_ then
+                   "fixed left-0 top-0 h-screen w-64 bg-nav-bg border-r border-white/5 flex flex-col z-50 shadow-[4px_0_32px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-in-out md:translate-x-0 translate-x-0"
+                 else
+                   "fixed left-0 top-0 h-screen w-64 bg-nav-bg border-r border-white/5 flex flex-col z-50 shadow-[4px_0_32px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-in-out md:translate-x-0 -translate-x-full")>
+      <div class_="p-8 pb-6">
+        <a href=(Routes.home ())>(logo ~size:`Big)</a>
+        <p class_="text-[11px] text-gray-600 mt-2 pl-0.5 font-medium tracking-wide">"Your cinematic universe"</p>
+      </div>
+      <div class_="flex-1 px-4 space-y-0.5 overflow-y-auto no-scrollbar">
+        (Yuka.fragment
+           (List.map
+              (fun link ->
+                <a href=link.href
+                  aria_current=(if current link then `page else `false_)
+                  class_=(if current link then
+                            "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative bg-brand-primary/12 text-white"
+                          else
+                            "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative text-gray-500 hover:text-gray-200 hover:bg-white/5")>
+                  (if current link then
+                     <span class_="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-brand-primary shadow-[0_0_8px_rgba(229,9,20,0.8)]" />
+                   else Yuka.empty)
+                  (link.icon
+                     (if current link then
+                        "w-[18px] h-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 text-brand-primary"
+                      else "w-[18px] h-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110"))
+                  <span class_="font-medium text-sm">(Yuka.text link.label)</span>
+                  (if link.label = "Watchlist" && Yuka.State.get count > 0 then
+                     <span class_="ml-auto text-[10px] font-bold bg-brand-primary/20 text-brand-primary px-2 py-0.5 rounded-full border border-brand-primary/20">
+                       (Yuka.int (Yuka.State.get count))
+                     </span>
+                   else Yuka.empty)
+                </a>)
+              links))
+      </div>
+      <div class_="p-4 space-y-3 border-t border-white/5">
+        <div class_="px-4 py-3 rounded-xl bg-white/3 border border-white/5 flex items-center gap-3">
+          <div class_="relative shrink-0">
+            <div class_="w-2 h-2 rounded-full bg-green-500" />
+            <div class_="absolute inset-0 w-2 h-2 rounded-full bg-green-500 animate-ping opacity-60" />
+          </div>
+          <div>
+            <p class_="text-[11px] font-bold text-green-400 uppercase tracking-widest">"Live"</p>
+            <p class_="text-[11px] text-gray-600 leading-tight">(Yuka.text {js|TMDB · VidSrc streams|js})</p>
+          </div>
+        </div>
+        <a href="https://github.com/madireis/vidsrc-wrapper" target=`_blank rel="noopener noreferrer"
+          class_="flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-all group">
+          (Icons.github "w-4 h-4 group-hover:scale-110 transition-transform")
+          <span class_="text-xs font-medium">"View on GitHub"</span>
+        </a>
+        <p class_="text-center text-[10px] text-gray-700 font-mono pb-1">(Yuka.text {js|CinePulse v1.0 · Yuka · Educational|js})</p>
+      </div>
+    </nav>
+    (if Yuka.State.get open_ then
+       <div class_="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden" on_click=(fun _ -> Yuka.State.set open_ false) />
+     else Yuka.empty)
+  </div>

@@ -1,0 +1,4 @@
+(* Goes back in the history, as the browser's Back button. *)
+
+let[@client] make ~(class_name : string) ~children () =
+  <button type_=`button class_=class_name on_click=(fun _ -> Yuka.Browser.back ())>children</button>

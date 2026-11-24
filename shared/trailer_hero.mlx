@@ -1,0 +1,33 @@
+(* The hero of a detail page: the backdrop, and while the pointer is on it, the muted
+   trailer. The trailer loads at the first hover, and shows only while it plays, so
+   YouTube's buttons, spinner and end screen stay behind the backdrop. *)
+
+let frame_id = "trailer-hero-frame"
+
+let[@client] make ~(backdrop : string) ~(trailer : string option) ~(title : string) ~children () =
+  let hovering = Yuka.State.make false in
+  let started = Yuka.State.make false in
+  let playing = Yuka.State.make false in
+  Yuka.Effect.after ~cleanup:(fun stop -> stop ()) (fun () ->
+      if Yuka.State.get started then !Bridge.background_video frame_id (Yuka.State.set playing) else fun () -> ());
+  let shown () = Yuka.State.get hovering && Yuka.State.get playing in
+  <div class_="relative h-[60vh] md:h-[85vh] -m-4 md:-m-8 overflow-hidden"
+    on_mouseenter=(fun _ -> Yuka.State.set hovering true; Yuka.State.set started true)
+    on_mouseleave=(fun _ -> Yuka.State.set hovering false)>
+    <img src=backdrop alt=title
+      class_=(if shown () then "w-full h-full object-cover transition-opacity duration-700 opacity-0"
+              else "w-full h-full object-cover transition-opacity duration-700 opacity-100") />
+    (match trailer with
+     | Some url when Yuka.State.get started ->
+         (* It fades in and out with the pointer, but goes at once when it stops playing. *)
+         <iframe id=frame_id src=url title=(title ^ " trailer") allow="autoplay; encrypted-media" tabindex=(-1)
+           class_=(if shown () then
+                     "absolute inset-0 w-full h-full scale-[1.35] pointer-events-none transition-opacity duration-700 opacity-100"
+                   else if Yuka.State.get playing then
+                     "absolute inset-0 w-full h-full scale-[1.35] pointer-events-none transition-opacity duration-700 opacity-0"
+                   else "absolute inset-0 w-full h-full scale-[1.35] pointer-events-none opacity-0") />
+     | _ -> Yuka.empty)
+    <div class_="absolute inset-0 bg-gradient-to-t from-brand-bg via-brand-bg/40 to-transparent pointer-events-none" />
+    <div class_="absolute inset-0 bg-gradient-to-r from-brand-bg/80 to-transparent pointer-events-none" />
+    children
+  </div>

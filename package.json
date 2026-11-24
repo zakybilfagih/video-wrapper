@@ -1,0 +1,15 @@
+{
+  "name": "cinepulse",
+  "private": true,
+  "description": "CinePulse on Yuka: the stylesheet build",
+  "scripts": {
+    "css": "tailwindcss -i assets/app.css -o static/app.css --minify",
+    "css:watch": "tailwindcss -i assets/app.css -o static/app.css --watch",
+    "icons": "node scripts/icons.mjs > shared/icons.ml"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.14",
+    "lucide": "^0.546.0",
+    "tailwindcss": "^4.1.14"
+  }
+}

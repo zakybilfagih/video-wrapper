@@ -1,0 +1,37 @@
+(* The search field. It sits in the layout of the search page, so it keeps its focus
+   while the results below it load: 400 ms after the last key, it loads the page of the
+   new query. *)
+
+let query_of = function Some (Routes.Search { q; _ }) -> !Bridge.of_utf8 (Option.value q ~default:"") | _ -> ""
+let tab_of = function Some (Routes.Search { tab; _ }) -> tab | _ -> "all"
+
+let[@client] make () =
+  let route = Routes.current () in
+  let query = Yuka.State.make (query_of (Yuka.State.peek route)) in
+  Yuka.Effect.on_change route (fun ~prev:_ ~next ->
+      let q = query_of next in
+      if String.trim q <> String.trim (Yuka.State.peek query) then Yuka.State.set query q);
+  Yuka.Effect.after ~cleanup:(fun cancel -> cancel ()) (fun () ->
+      let text = String.trim (Yuka.State.get query) in
+      !Bridge.after 400 (fun () ->
+          let shown = String.trim (query_of (Yuka.State.peek route)) in
+          let wanted = if String.length text > 2 then text else "" in
+          if wanted <> shown then
+            Yuka.Browser.navigate ~replace:true ~keep_scroll:true
+              (Routes.search
+                 ?q:(if wanted = "" then None else Some (!Bridge.to_utf8 wanted))
+                 ~tab:(tab_of (Yuka.State.peek route)) ())));
+  <div class_="relative group">
+    (Icons.search
+       "absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-500 group-focus-within:text-brand-primary transition-colors pointer-events-none")
+    <input type_=`text aria_label="Search" autofocus=true value=(Yuka.State.get query)
+      on_input=(fun event -> Yuka.State.set query (Yuka.Event.target_value event))
+      placeholder="Search movies, TV shows, actors..."
+      class_="w-full bg-white/5 border border-white/10 rounded-2xl py-4 md:py-6 pl-12 md:pl-16 pr-10 md:pr-12 text-lg md:text-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/50 placeholder:text-gray-600 transition-all font-light" />
+    (if Yuka.State.get query <> "" then
+       <button type_=`button aria_label="Clear" on_click=(fun _ -> Yuka.State.set query "")
+         class_="absolute right-6 top-1/2 -translate-y-1/2 p-2 hover:bg-white/10 rounded-full">
+         (Icons.x "w-5 h-5 text-gray-400")
+       </button>
+     else Yuka.empty)
+  </div>

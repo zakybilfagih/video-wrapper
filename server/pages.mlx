@@ -1,0 +1,1309 @@
+(* The pages that Routes.ml names. *)
+
+open App_shared
+open Views
+
+let page ~title body = Yuka.Server.page ~title:(title ^ " | CinePulse") body
+
+(* Layouts *)
+
+(* The layouts take no loader result, so a client navigation keeps them on the page, and
+   an overlay route can show over a page. *)
+let shell ~children () =
+  <div class_="flex min-h-screen bg-brand-bg">
+    <Yuka.Client><Side_nav /></Yuka.Client>
+    <main class_="flex-1 md:ml-64 pt-20 pb-8 px-4 md:pt-8 md:px-8 overflow-x-hidden relative">
+      (if Tmdb.configured () then Yuka.empty
+       else
+         <div class_="mb-6 rounded-xl border border-brand-primary/30 bg-brand-primary/10 px-4 py-3 text-sm text-gray-200">
+           "TMDB_API_KEY is not set: add it to the environment or to .env and restart the server."
+         </div>)
+      children
+    </main>
+  </div>
+
+let search_layout ~children () =
+  <div class_="space-y-10 pb-20">
+    <div class_="relative max-w-2xl mx-auto z-20"><Yuka.Client><Search_box /></Yuka.Client></div>
+    children
+  </div>
+
+(* Home *)
+
+let hero (movie : Tmdb.card) =
+  <section class_="relative h-[80vh] -mx-4 -mt-20 md:-mx-8 md:-mt-8 overflow-hidden">
+    <img src=(image ~size:"original" movie.backdrop) alt=movie.title class_="w-full h-full object-cover" />
+    <div class_="absolute inset-0 bg-gradient-to-r from-brand-bg via-brand-bg/60 to-transparent" />
+    <div class_="absolute inset-0 bg-gradient-to-r from-brand-bg/80 via-brand-bg/50 to-transparent" />
+    <div class_="absolute inset-0 flex flex-col justify-end p-6 md:p-12 z-10">
+      <div class_="max-w-3xl space-y-4 md:space-y-6 animate-[fadeIn_0.5s_ease_both]">
+        <div class_="flex items-center space-x-3">
+          <span class_="px-3 py-1 bg-brand-primary/20 text-brand-primary text-xs md:text-sm font-bold tracking-wider rounded-md border border-brand-primary/30 backdrop-blur-sm">
+            "NEW TRENDING"
+          </span>
+        </div>
+        <h1 class_="text-4xl sm:text-5xl md:text-7xl font-display font-bold tracking-tight leading-tight text-white drop-shadow-2xl">
+          (Yuka.text movie.title)
+        </h1>
+        <p class_="text-base sm:text-lg md:text-xl text-gray-200 font-light leading-relaxed max-w-xl drop-shadow-lg line-clamp-3 md:line-clamp-none">
+          (Yuka.text movie.overview)
+        </p>
+        <div class_="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-4">
+          <a href=(Routes.watch ~kind:Movie ~id:movie.id ())
+            class_="bg-brand-primary hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold whitespace-nowrap flex items-center justify-center space-x-2 transition-all hover:scale-105 shadow-2xl shadow-brand-primary/20">
+            (Icons.play "w-5 h-5 fill-white") <span>"Watch Now"</span>
+          </a>
+          <a href=(Routes.movie ~id:movie.id ())
+            class_="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-xl font-bold whitespace-nowrap flex items-center justify-center space-x-2 transition-all hover:scale-105 backdrop-blur-md border border-white/10">
+            (Icons.info "w-5 h-5") <span>"More Info"</span>
+          </a>
+          <a href=(Routes.random ()) data_yuka_prefetch="off"
+            class_="bg-white/10 hover:bg-white/20 backdrop-blur-xl text-white px-8 py-4 rounded-xl font-bold whitespace-nowrap flex items-center justify-center space-x-3 transition-all hover:scale-105 border border-white/10 group">
+            (Icons.zap "w-5 h-5 text-brand-primary group-hover:animate-pulse") <span>"Quick Pick"</span>
+          </a>
+          <a href=(Routes.decide ())
+            class_="bg-white/10 hover:bg-white/20 backdrop-blur-xl text-white px-8 py-4 rounded-xl font-bold whitespace-nowrap flex items-center justify-center space-x-3 transition-all hover:scale-105 border border-white/10 group">
+            (Icons.sparkles "w-5 h-5 text-brand-primary") <span>"Decide for Me"</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+let continue_watching entries =
+  match entries with
+  | [] -> Yuka.empty
+  | entries ->
+      <section class_="space-y-6">
+        <div class_="flex items-center gap-2">
+          (Icons.clock "w-5 h-5 text-brand-primary")
+          <h2 class_="text-xl md:text-2xl font-display font-bold tracking-tight">"Continue Watching"</h2>
+        </div>
+        <div class_="flex space-x-4 overflow-x-auto no-scrollbar pb-4">
+          (Yuka.fragment
+             (List.map
+                (fun ((play : Model.play), (media : Tmdb.media)) ->
+                  let card = media.card in
+                  let link =
+                    match play with
+                    | Episode (season, episode) -> Routes.watch ~kind:Tv ~id:card.id ~season ~episode ()
+                    | Played | Viewed -> Routes.watch ~kind:card.kind ~id:card.id ()
+                  in
+                  <a href=link class_="shrink-0 w-48 md:w-64 group relative">
+                    <div class_="aspect-video rounded-xl overflow-hidden mb-2 bg-card-bg relative border border-white/5">
+                      <img src=(image (if card.backdrop = None then card.poster else card.backdrop)) alt=card.title loading=`lazy_
+                        class_="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 opacity-80 group-hover:opacity-100" />
+                      <div class_="absolute inset-0 flex items-center justify-center">
+                        <div class_="w-12 h-12 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-brand-primary transition-colors shadow-xl">
+                          (Icons.play "w-5 h-5 fill-white text-white ml-1")
+                        </div>
+                      </div>
+                      (match play with
+                       | Episode (season, episode) ->
+                           <div class_="absolute bottom-2 left-2 bg-black/80 backdrop-blur-md px-2 py-1 rounded-md border border-white/10">
+                             <span class_="text-[10px] font-bold text-white tracking-widest uppercase">
+                               (Yuka.text (Printf.sprintf "S%d E%d" season episode))
+                             </span>
+                           </div>
+                       | Played | Viewed -> Yuka.empty)
+                    </div>
+                    <p class_="text-sm font-semibold line-clamp-1 group-hover:text-brand-primary transition-colors">(Yuka.text card.title)</p>
+                  </a>)
+                entries))
+        </div>
+      </section>
+
+let trending_tv (page : Tmdb.card Tmdb.page) =
+  <section class_="space-y-6">
+    <div class_="flex items-center justify-between">
+      <div class_="flex items-center gap-2">
+        (Icons.tv "w-5 h-5 text-brand-primary")
+        <h2 class_="text-2xl font-display font-bold tracking-tight">"Trending TV Shows"</h2>
+      </div>
+      <a href=(Routes.tv_shows ()) class_="text-sm text-gray-500 hover:text-brand-primary transition-colors font-medium">"See All →"</a>
+    </div>
+    <div class_="flex space-x-4 overflow-x-auto no-scrollbar pb-4">
+      (Yuka.fragment
+         (List.map
+            (fun (show : Tmdb.card) ->
+              <a href=(Routes.show ~id:show.id ()) class_="shrink-0 w-40 group">
+                <div class_="aspect-[2/3] rounded-xl overflow-hidden mb-2 bg-card-bg">
+                  <img src=(image show.poster) alt=show.title loading=`lazy_
+                    class_="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                </div>
+                <p class_="text-xs font-semibold line-clamp-1 group-hover:text-brand-primary transition-colors">(Yuka.text show.title)</p>
+              </a>)
+            (take 12 page.results)))
+    </div>
+  </section>
+
+let home ~(me : Loaders.me) () =
+  let trending = async (Tmdb.trending Movie) in
+  let started =
+    take 10 (List.filter (fun (entry : Saved.History.entry) -> entry.play <> Viewed) me.history)
+  in
+  let continuing = async (with_media (List.map (fun (entry : Saved.History.entry) -> (entry.play, entry.item)) started)) in
+  Yuka.Server.page ~title:"CinePulse | Stream Movies & TV Shows" (fun () ->
+      <div class_="space-y-12 pb-20">
+        <Yuka.Await async=trending blocking=`Yes loading=Yuka.empty failed=(fun _ -> could_not_load)>
+          (fun (page : Tmdb.card Tmdb.page) -> match page.results with movie :: _ -> hero movie | [] -> Yuka.empty)
+        </Yuka.Await>
+        <div class_="space-y-16">
+          <Yuka.Await async=continuing loading=Yuka.empty>(fun entries -> continue_watching entries)</Yuka.Await>
+          (slider_of ~me ~title:"Trending Movies" trending)
+          <Yuka.Await async=(async (Tmdb.trending Tv)) loading=Yuka.empty>(fun page -> trending_tv page)</Yuka.Await>
+          <section class_="py-12 bg-white/5 -mx-4 px-4 md:-mx-8 md:px-8 rounded-[4rem] border-y border-white/5">
+            (slider_of ~me ~title:"Critics' Choice" (async (Tmdb.movie_list "top_rated")))
+          </section>
+          (slider_of ~me ~title:"Most Popular" (async (Tmdb.movie_list "popular")))
+        </div>
+      </div>)
+
+(* Decision mode: three steps, each a URL. *)
+
+type mood = { mood_id : string; mood_label : string; mood_icon : string -> Yuka.server Yuka.element; genres : string }
+
+let moods =
+  [
+    { mood_id = "chill"; mood_label = "Chill & Relax"; mood_icon = Icons.compass; genres = "35,10751" };
+    { mood_id = "thrill"; mood_label = "Edge of My Seat"; mood_icon = Icons.sparkles; genres = "28,53,27" };
+    { mood_id = "escape"; mood_label = "Epic Escape"; mood_icon = Icons.film; genres = "878,14,12" };
+    { mood_id = "learn"; mood_label = "Learn Something"; mood_icon = Icons.tv; genres = "99,36" };
+  ]
+
+type time = {
+  time_id : string;
+  time_label : string;
+  time_icon : string -> Yuka.server Yuka.element;
+  time_kind : Model.kind;
+  runtime : (string * string) list;
+}
+
+let times =
+  [
+    { time_id = "short"; time_label = "Under 90 mins"; time_icon = Icons.clock; time_kind = Movie; runtime = [ ("with_runtime.lte", "90") ] };
+    {
+      time_id = "medium";
+      time_label = "90 - 120 mins";
+      time_icon = Icons.clock;
+      time_kind = Movie;
+      runtime = [ ("with_runtime.gte", "90"); ("with_runtime.lte", "120") ];
+    };
+    { time_id = "long"; time_label = "Over 2 hours"; time_icon = Icons.clock; time_kind = Movie; runtime = [ ("with_runtime.gte", "120") ] };
+    { time_id = "series"; time_label = "Start a Series"; time_icon = Icons.tv; time_kind = Tv; runtime = [] };
+  ]
+
+let choice_tile ~href:url ~icon label =
+  <a href=url
+    class_="flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-300 border-white/5 bg-white/5 hover:border-brand-primary hover:bg-brand-primary/10 group">
+    (icon "w-8 h-8 mb-3 text-gray-400 group-hover:text-brand-primary")
+    <span class_="font-bold text-lg text-gray-300 group-hover:text-white text-center">(Yuka.text label)</span>
+  </a>
+
+let step_heading ~title ~text =
+  <div class_="text-center space-y-2">
+    <h2 class_="text-3xl font-display font-bold text-white">(Yuka.text title)</h2>
+    <p class_="text-gray-400">(Yuka.text text)</p>
+  </div>
+
+let decide_steps ~mood ~time =
+  let mood = Option.bind mood (fun id -> List.find_opt (fun m -> m.mood_id = id) moods) in
+  let time = Option.bind time (fun id -> List.find_opt (fun t -> t.time_id = id) times) in
+  match (mood, time) with
+  | None, _ ->
+      <div class_="space-y-8 animate-[fadeIn_0.3s_ease_both]">
+        (step_heading ~title:"What's the vibe?" ~text:"Let us pick the perfect genre for your mood.")
+        <div class_="grid grid-cols-2 gap-4">
+          (Yuka.fragment
+             (List.map (fun m -> choice_tile ~href:(Routes.decide ~mood:m.mood_id ()) ~icon:m.mood_icon m.mood_label) moods))
+        </div>
+      </div>
+  | Some mood, None ->
+      <div class_="space-y-8 animate-[fadeIn_0.3s_ease_both]">
+        (step_heading ~title:"How much time?" ~text:"We'll find something that fits your schedule.")
+        <div class_="grid grid-cols-2 gap-4">
+          (Yuka.fragment
+             (List.map
+                (fun t -> choice_tile ~href:(Routes.decide ~mood:mood.mood_id ~time:t.time_id ()) ~icon:t.time_icon t.time_label)
+                times))
+        </div>
+        <div class_="flex justify-start">
+          <a href=(Routes.decide ()) class_="px-8 py-3 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-colors">"Back"</a>
+        </div>
+      </div>
+  | Some mood, Some time ->
+      let picks =
+        Tmdb.discover time.time_kind
+          ([ ("with_genres", mood.genres); ("sort_by", "popularity.desc"); ("vote_average.gte", "6"); ("vote_count.gte", "100") ]
+          @ time.runtime)
+      in
+      await
+        ~loading:
+          <div class_="py-20 flex flex-col items-center justify-center space-y-6">
+            <div class_="w-16 h-16 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
+            <h2 class_="text-2xl font-display font-bold text-white animate-pulse">"Finding the perfect match..."</h2>
+          </div>
+        picks
+        (fun (page : Tmdb.card Tmdb.page) ->
+          <div class_="space-y-6 animate-[fadeIn_0.3s_ease_both]">
+            <div class_="mb-8">(step_heading ~title:"Your Perfect Match" ~text:"Based on your mood and available time.")</div>
+            <div class_="space-y-4">
+              (match take 3 page.results with
+               | [] -> <p class_="text-center text-gray-400">"Nothing matches yet. Try another mood or time."</p>
+               | picks ->
+                   Yuka.fragment
+                     (List.map
+                        (fun (pick : Tmdb.card) ->
+                          <a href=(href pick)
+                            class_="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                            <img src=(image ~size:"w300" pick.poster) alt=pick.title class_="w-16 h-24 object-cover rounded-lg shadow-lg" />
+                            <div class_="flex-1">
+                              <h3 class_="text-lg font-bold text-white group-hover:text-brand-primary transition-colors">(Yuka.text pick.title)</h3>
+                              <p class_="text-sm text-gray-400 line-clamp-2 mt-1">(Yuka.text pick.overview)</p>
+                            </div>
+                            <div class_="px-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                              (Icons.play "w-6 h-6 text-brand-primary fill-brand-primary")
+                            </div>
+                          </a>)
+                        picks))
+            </div>
+            <div class_="pt-4 flex justify-center">
+              <a href=(Routes.decide ()) class_="text-gray-400 hover:text-white font-medium transition-colors">"Start Over"</a>
+            </div>
+          </div>)
+
+let decide_panel ~close ~mood ~time =
+  <div class_="relative w-full max-w-2xl bg-gray-900 border border-white/10 rounded-3xl p-8 shadow-2xl overflow-hidden animate-[pop_0.2s_ease_both]">
+    <div class_="absolute top-6 right-6 z-10">close</div>
+    (decide_steps ~mood ~time)
+  </div>
+
+let decide ~mood ~time ~me:_ () =
+  page ~title:"Decision Mode" (fun () ->
+      <div class_="flex items-center justify-center py-12">
+        (decide_panel ~mood ~time
+           ~close:
+             <a href=(Routes.home ()) aria_label="Close" class_="block p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 transition-colors">
+               (Icons.x "w-5 h-5")
+             </a>)
+      </div>)
+
+let decide_dialog ~mood ~time ~me:_ () =
+  page ~title:"Decision Mode" (fun () ->
+      <div class_="fixed inset-0 z-50 flex items-center justify-center px-4" role=`dialog aria_modal=true aria_label="Decision Mode">
+        <Yuka.Client><Overlay_close backdrop=true /></Yuka.Client>
+        (decide_panel ~mood ~time ~close:<Yuka.Client><Overlay_close backdrop=false /></Yuka.Client>)
+      </div>)
+
+(* Browse and TV shows *)
+
+let rating_options = [ (0, "Any Rating"); (8, "8.0+ Rating"); (7, "7.0+ Rating"); (6, "6.0+ Rating") ]
+let max_pages = 20
+
+(* Pages 1 to [pages] of a discover query, one list with no title twice. *)
+let discover_pages kind params pages =
+  let open Lwt.Syntax in
+  let+ results =
+    Lwt_list.map_p (fun page -> Tmdb.discover kind (params @ [ ("page", Int.to_string page) ])) (List.init pages succ)
+  in
+  let seen = Hashtbl.create 100 in
+  let cards =
+    List.filter
+      (fun (card : Tmdb.card) -> if Hashtbl.mem seen card.id then false else (Hashtbl.add seen card.id (); true))
+      (List.concat_map (fun (page : Tmdb.card Tmdb.page) -> page.results) results)
+  in
+  let more = match List.rev results with last :: _ -> last.page < last.total_pages | [] -> false in
+  (cards, more)
+
+let rating_params rating =
+  if rating > 0 then [ ("vote_average.gte", Int.to_string rating); ("vote_count.gte", "50") ] else []
+
+let genre_pills ~current ~link genres =
+  <div class_="flex overflow-x-auto no-scrollbar space-x-2 py-2">
+    (pill ~current:(current = None) ~href:(link None) "All")
+    (Yuka.fragment
+       (List.map (fun (id, name) -> pill ~current:(current = Some id) ~href:(link (Some id)) name) genres))
+  </div>
+
+let browse ~genre ~sort ~rating ~runtime ~year ~view ~pages ~(me : Loaders.me) () =
+  let pages = max 1 (min max_pages pages) in
+  let link ?(genre = genre) ?(sort = sort) ?(rating = rating) ?(runtime = runtime) ?(year = year) ?(view = view) ?(pages = 1) () =
+    Routes.browse ?genre ~sort ~rating ~runtime ~year ~view ~pages ()
+  in
+  let params =
+    (match genre with Some id -> [ ("with_genres", Int.to_string id) ] | None -> [])
+    @ [ ("sort_by", sort) ] @ rating_params rating
+    @ (match runtime with
+      | "short" -> [ ("with_runtime.lte", "90") ]
+      | "med" -> [ ("with_runtime.gte", "90"); ("with_runtime.lte", "120") ]
+      | "long" -> [ ("with_runtime.gte", "120") ]
+      | _ -> [])
+    @
+    match year with
+    | "2020s" -> [ ("primary_release_date.gte", "2020-01-01"); ("primary_release_date.lte", "2029-12-31") ]
+    | "2010s" -> [ ("primary_release_date.gte", "2010-01-01"); ("primary_release_date.lte", "2019-12-31") ]
+    | "2000s" -> [ ("primary_release_date.gte", "2000-01-01"); ("primary_release_date.lte", "2009-12-31") ]
+    | "1990s" -> [ ("primary_release_date.gte", "1990-01-01"); ("primary_release_date.lte", "1999-12-31") ]
+    | "older" -> [ ("primary_release_date.lte", "1989-12-31") ]
+    | _ -> []
+  in
+  let landscape = view = "list" in
+  let view_button ~mode ~icon ~label =
+    <a href=(link ~view:mode ~pages ()) aria_label=label title=label data_yuka_keep_scroll="" data_yuka_replace=""
+      class_=(if view = mode then "p-2 rounded-md transition-all bg-brand-primary text-white"
+              else "p-2 rounded-md transition-all text-gray-400 hover:text-white")>
+      (icon "w-5 h-5")
+    </a>
+  in
+  page ~title:"Browse Movies" (fun () ->
+      <div class_="space-y-8 pb-12">
+        <div class_="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h1 class_="text-3xl font-display font-bold tracking-tight">"Browse"</h1>
+          <div class_="flex items-center space-x-4">
+            <div class_="flex bg-white/5 p-1 rounded-lg border border-white/10">
+              (view_button ~mode:"grid" ~icon:Icons.layout_grid ~label:"Grid")
+              (view_button ~mode:"list" ~icon:Icons.list ~label:"List")
+            </div>
+            <div class_="flex flex-wrap gap-2">
+              (filter ~label:"Rating" (choices rating rating_options (fun rating -> link ~rating ())))
+              (filter ~label:"Runtime"
+                 (choices runtime
+                    [ ("any", "Any Runtime"); ("short", "Under 90 mins"); ("med", "90 - 120 mins"); ("long", "Over 120 mins") ]
+                    (fun runtime -> link ~runtime ())))
+              (filter ~label:"Year"
+                 (choices year
+                    [ ("any", "Any Year"); ("2020s", "2020s"); ("2010s", "2010s"); ("2000s", "2000s"); ("1990s", "1990s"); ("older", "Older") ]
+                    (fun year -> link ~year ())))
+              (filter ~label:"Sort"
+                 (choices sort
+                    [ ("popularity.desc", "Popularity"); ("vote_average.desc", "Rating"); ("primary_release_date.desc", "Latest") ]
+                    (fun sort -> link ~sort ())))
+            </div>
+          </div>
+        </div>
+        (await ~loading:<div class_="h-12" /> (Tmdb.genre_list Movie) (fun genres ->
+             genre_pills ~current:genre ~link:(fun genre -> Routes.browse ?genre ~sort ~rating ~runtime ~year ~view ()) genres))
+        (await ~loading:(skeleton_grid ~landscape ()) (discover_pages Movie params pages) (fun (cards, more) ->
+             <div class_="space-y-8">
+               <div class_=(if landscape then "grid gap-6 grid-cols-1" else "grid gap-6 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5")>
+                 (Yuka.fragment (List.map (card ~me ~landscape) cards))
+               </div>
+               <Yuka.Client>
+                 <Infinite_scroll next=(if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None) />
+               </Yuka.Client>
+             </div>))
+      </div>)
+
+let tv_shows ~genre ~sort ~rating ~pages ~(me : Loaders.me) () =
+  let pages = max 1 (min max_pages pages) in
+  let link ?(genre = genre) ?(sort = sort) ?(rating = rating) ?(pages = 1) () = Routes.tv_shows ?genre ~sort ~rating ~pages () in
+  let params = (match genre with Some id -> [ ("with_genres", Int.to_string id) ] | None -> []) @ [ ("sort_by", sort) ] @ rating_params rating in
+  page ~title:"TV Shows" (fun () ->
+      <div class_="space-y-8 pb-12">
+        <div class_="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class_="flex items-center gap-3">
+            (Icons.tv "w-7 h-7 text-brand-primary")
+            <h1 class_="text-3xl font-display font-bold tracking-tight">"TV Shows"</h1>
+          </div>
+          <div class_="flex flex-wrap gap-2">
+            (filter ~label:"Rating" (choices rating rating_options (fun rating -> link ~rating ())))
+            (filter ~label:"Sort"
+               (choices sort
+                  [ ("popularity.desc", "Popularity"); ("vote_average.desc", "Rating"); ("first_air_date.desc", "Latest") ]
+                  (fun sort -> link ~sort ())))
+          </div>
+        </div>
+        (await ~loading:<div class_="h-12" /> (Tmdb.genre_list Tv) (fun genres ->
+             genre_pills ~current:genre ~link:(fun genre -> Routes.tv_shows ?genre ~sort ~rating ()) genres))
+        (await ~loading:(skeleton_grid ()) (discover_pages Tv params pages) (fun (cards, more) ->
+             <div class_="space-y-8">
+               <div class_=grid_class>(Yuka.fragment (List.map (card ~me) cards))</div>
+               <Yuka.Client>
+                 <Infinite_scroll next=(if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None) />
+               </Yuka.Client>
+             </div>))
+      </div>)
+
+(* Search *)
+
+let person_card (person : Tmdb.person_result) =
+  <a href=(Routes.person ~id:person.person_result_id ()) class_="group cursor-pointer block transition-transform hover:scale-[1.04]">
+    <div class_="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 relative border border-white/5 group-hover:border-brand-primary/40 transition-colors">
+      (match person.person_result_profile with
+       | Some _ ->
+           <img src=(image person.person_result_profile) alt=person.person_result_name loading=`lazy_
+             class_="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+       | None -> <div class_="w-full h-full flex items-center justify-center">(Icons.user "w-12 h-12 text-gray-600")</div>)
+      <div class_="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
+        <span class_="text-[10px] text-brand-primary font-bold uppercase tracking-widest mb-1">"Actor"</span>
+        <p class_="text-xs text-gray-300 line-clamp-2 italic">(Yuka.text (String.concat ", " person.known_for))</p>
+      </div>
+    </div>
+    <p class_="mt-2 text-sm font-semibold text-white group-hover:text-brand-primary transition-colors leading-tight">
+      (Yuka.text person.person_result_name)
+    </p>
+    (if person.department <> "" then <p class_="text-xs text-gray-500 mt-0.5">(Yuka.text person.department)</p> else Yuka.empty)
+  </a>
+
+let person_bubble (person : Tmdb.person_result) =
+  <a href=(Routes.person ~id:person.person_result_id ()) class_="shrink-0 w-24 text-center group">
+    <div class_="w-20 h-20 rounded-full overflow-hidden bg-white/5 border-2 border-white/5 group-hover:border-brand-primary transition-colors mx-auto mb-2">
+      (match person.person_result_profile with
+       | Some _ -> <img src=(image person.person_result_profile) alt=person.person_result_name loading=`lazy_ class_="w-full h-full object-cover" />
+       | None -> <div class_="w-full h-full flex items-center justify-center">(Icons.user "w-8 h-8 text-gray-600")</div>)
+    </div>
+    <p class_="text-xs font-semibold text-white group-hover:text-brand-primary transition-colors leading-tight">
+      (Yuka.text person.person_result_name)
+    </p>
+    <p class_="text-[10px] text-gray-500">(Yuka.text person.department)</p>
+  </a>
+
+let search_results ~me ~query ~tab (results : Tmdb.result list) =
+  let titles = List.filter_map (function Tmdb.Title card -> Some card | Person_result _ -> None) results in
+  let people = List.filter_map (function Tmdb.Person_result person -> Some person | Title _ -> None) results in
+  let movies = List.filter (fun (card : Tmdb.card) -> card.kind = Movie) titles in
+  let shows = List.filter (fun (card : Tmdb.card) -> card.kind = Tv) titles in
+  let tab = if List.mem tab [ "all"; "movies"; "tv"; "people" ] then tab else "all" in
+  let shown = match tab with "movies" -> movies | "tv" -> shows | "people" -> [] | _ -> titles in
+  let tabs =
+    List.filter
+      (fun (key, _, _, count) -> count > 0 || key = "all")
+      [
+        ("all", "All", None, List.length titles);
+        ("movies", "Movies", Some Icons.film, List.length movies);
+        ("tv", "TV Shows", Some Icons.tv, List.length shows);
+        ("people", "People", Some Icons.user, List.length people);
+      ]
+  in
+  <div class_="space-y-10">
+    (if results <> [] then <Yuka.Client><Remember_search query /></Yuka.Client> else Yuka.empty)
+    (if results = [] then Yuka.empty
+     else
+       <div class_="flex items-center gap-2 flex-wrap">
+         (Yuka.fragment
+            (List.map
+               (fun (key, label, icon, count) ->
+                 <a href=(Routes.search ~q:query ~tab:key ()) data_yuka_keep_scroll="" data_yuka_replace=""
+                   class_=(if key = tab then "px-5 py-2 rounded-full text-sm font-medium flex items-center gap-1.5 transition-all bg-brand-primary text-white"
+                           else "px-5 py-2 rounded-full text-sm font-medium flex items-center gap-1.5 transition-all bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white")>
+                   (match icon with Some icon -> icon "w-4 h-4" | None -> Yuka.empty)
+                   (Yuka.text label)
+                   (if count > 0 then <span class_="opacity-70">(Yuka.text (Printf.sprintf "(%d)" count))</span> else Yuka.empty)
+                 </a>)
+               tabs))
+       </div>)
+    (if tab = "people" && people <> [] then <div class_=grid_class>(Yuka.fragment (List.map person_card people))</div> else Yuka.empty)
+    (if tab = "all" && people <> [] then
+       <div class_="space-y-3">
+         <div class_="flex items-center justify-between">
+           <h3 class_="text-sm font-bold uppercase tracking-widest text-gray-400 flex items-center gap-2">(Icons.user "w-4 h-4") "People"</h3>
+           (if List.length people > 4 then
+              <a href=(Routes.search ~q:query ~tab:"people" ()) data_yuka_keep_scroll="" data_yuka_replace="" class_="text-xs text-brand-primary hover:underline">
+                (Yuka.text (Printf.sprintf "See all (%d)" (List.length people)))
+              </a>
+            else Yuka.empty)
+         </div>
+         <div class_="flex gap-4 overflow-x-auto no-scrollbar pb-2">(Yuka.fragment (List.map person_bubble (take 8 people)))</div>
+       </div>
+     else Yuka.empty)
+    (if tab <> "people" then <div class_=grid_class>(Yuka.fragment (List.map (card ~me ~badge:true) shown))</div> else Yuka.empty)
+    (if (tab = "people" && people = []) || (tab <> "people" && shown = []) then
+       <div class_="text-center py-20 space-y-4">
+         <div class_="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto">(Icons.search "w-10 h-10 text-gray-600")</div>
+         <p class_="text-gray-400 text-xl font-light">(Yuka.text ("No results for \"" ^ query ^ "\""))</p>
+       </div>
+     else Yuka.empty)
+  </div>
+
+let search ~q ~tab ~(me : Loaders.me) () =
+  let query = String.trim (Option.value q ~default:"") in
+  if String.length query <= 2 then
+    page ~title:"Search" (fun () ->
+        <div class_="space-y-10">
+          (if me.searches = [] then Yuka.empty
+           else <div class_="max-w-2xl mx-auto -mt-10"><Yuka.Client><Recent_searches queries=me.searches /></Yuka.Client></div>)
+          <div class_="text-center py-20 opacity-15 select-none">
+            <h2 class_="text-3xl md:text-5xl font-display font-bold tracking-tight px-4">"DISCOVER SOMETHING NEW"</h2>
+          </div>
+        </div>)
+  else
+    page ~title:(query ^ " - Search") (fun () ->
+        await ~loading:(skeleton_grid ()) (Tmdb.search query) (search_results ~me ~query ~tab))
+
+(* Watchlist, history and analytics *)
+
+let saved_grid ~me ?(refresh = false) items =
+  <div class_=grid_class>(Yuka.fragment (List.map (fun ((), (media : Tmdb.media)) -> card ~me ~refresh media.card) items))</div>
+
+let watchlist ~(me : Loaders.me) () =
+  page ~title:"Watchlist" (fun () ->
+      match me.watchlist with
+      | [] ->
+          empty_state ~icon:(Icons.bookmark "w-10 h-10 text-brand-primary") ~title:"Your Watchlist is empty"
+            ~text:"Movies and shows you add to your watchlist will appear here. The list stays in this browser."
+      | items ->
+          <div class_="space-y-8 pb-12">
+            <h1 class_="text-3xl font-display font-bold tracking-tight">"Your Watchlist"</h1>
+            (await ~loading:(skeleton_grid ()) (with_media (List.map (fun item -> ((), item)) items)) (saved_grid ~me ~refresh:true))
+          </div>)
+
+let history ~(me : Loaders.me) () =
+  page ~title:"History" (fun () ->
+      match me.history with
+      | [] ->
+          empty_state ~icon:(Icons.history "w-10 h-10 text-brand-primary") ~title:"No Watch History"
+            ~text:"Movies you watch will appear here so you can easily find them again."
+      | entries ->
+          <div class_="space-y-8 pb-12">
+            <div class_="flex items-center justify-between">
+              <h1 class_="text-3xl font-display font-bold tracking-tight">"Watch History"</h1>
+              <Yuka.Client><Clear_history /></Yuka.Client>
+            </div>
+            (await ~loading:(skeleton_grid ())
+               (with_media (List.map (fun (entry : Saved.History.entry) -> ((), entry.item)) entries))
+               (saved_grid ~me))
+          </div>)
+
+let stat_tile ~glow ~icon ~label value =
+  <div class_="bg-white/5 border border-white/10 rounded-3xl p-6 relative overflow-hidden group animate-[fadeIn_0.4s_ease_both]">
+    <div class_=glow />
+    <div class_="flex items-center gap-4 mb-4">
+      <div class_="p-3 bg-white/10 rounded-xl">icon</div>
+      <h3 class_="text-gray-400 font-semibold uppercase tracking-wider text-sm">(Yuka.text label)</h3>
+    </div>
+    value
+  </div>
+
+let analytics (items : (unit * Tmdb.media) list) =
+  let medias = List.map snd items in
+  let is_tv (media : Tmdb.media) = media.card.kind = Tv in
+  let shows = List.length (List.filter is_tv medias) in
+  let minutes =
+    List.fold_left
+      (fun total (media : Tmdb.media) -> total + if media.minutes > 0 then media.minutes else if is_tv media then 45 else 110)
+      0 medias
+  in
+  let counts = Hashtbl.create 16 in
+  List.iter
+    (fun (media : Tmdb.media) ->
+      List.iter
+        (fun (id, name) ->
+          let count, _ = Option.value (Hashtbl.find_opt counts id) ~default:(0, name) in
+          Hashtbl.replace counts id (count + 1, name))
+        media.genre_names)
+    medias;
+  let top =
+    take 3 (List.stable_sort (fun (a, _) (b, _) -> compare b a) (Hashtbl.fold (fun _ entry list -> entry :: list) counts []))
+  in
+  let number value = <p class_="text-4xl font-display font-bold text-white">(Yuka.int value)</p> in
+  <div class_="space-y-12 pb-20">
+    <div>
+      <h1 class_="text-5xl font-display font-bold tracking-tight mb-2 text-white">"Your Analytics"</h1>
+      <p class_="text-gray-400 text-lg">"A breakdown of your viewing habits and history."</p>
+    </div>
+    <div class_="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      (stat_tile ~glow:"absolute -right-4 -top-4 w-24 h-24 bg-brand-primary/10 rounded-full blur-2xl group-hover:bg-brand-primary/20 transition-colors"
+         ~icon:(Icons.clock "w-6 h-6 text-brand-primary") ~label:"Time Watched"
+         <div class_="flex items-baseline gap-2">
+           <span class_="text-4xl font-display font-bold text-white">(Yuka.int (minutes / 60))</span>
+           <span class_="text-gray-400 font-medium">"h"</span>
+           <span class_="text-4xl font-display font-bold text-white ml-2">(Yuka.int (minutes mod 60))</span>
+           <span class_="text-gray-400 font-medium">"m"</span>
+         </div>)
+      (stat_tile ~glow:"absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-colors"
+         ~icon:(Icons.film "w-6 h-6 text-blue-400") ~label:"Movies" (number (List.length medias - shows)))
+      (stat_tile ~glow:"absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-colors"
+         ~icon:(Icons.tv "w-6 h-6 text-purple-400") ~label:"TV Shows" (number shows))
+      (stat_tile ~glow:"absolute -right-4 -top-4 w-24 h-24 bg-yellow-500/10 rounded-full blur-2xl group-hover:bg-yellow-500/20 transition-colors"
+         ~icon:(Icons.trophy "w-6 h-6 text-yellow-400") ~label:"Total Titles" (number (List.length medias)))
+    </div>
+    <div class_="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class_="lg:col-span-1 space-y-6">
+        <h2 class_="text-2xl font-display font-bold flex items-center gap-2">(Icons.sparkles "w-6 h-6 text-brand-primary") "Top Genres"</h2>
+        <div class_="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+          (match top with
+           | [] -> <p class_="text-gray-400 text-center py-4">"Not enough data to determine favorite genres."</p>
+           | top ->
+               Yuka.fragment
+                 (List.mapi
+                    (fun index (_, name) ->
+                      <div class_="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                        <div class_="flex items-center gap-4">
+                          <span class_="text-2xl font-display font-bold text-gray-500">(Yuka.text (Printf.sprintf "#%d" (index + 1)))</span>
+                          <span class_="text-lg font-bold text-white">(Yuka.text name)</span>
+                        </div>
+                      </div>)
+                    top))
+        </div>
+      </div>
+      <div class_="lg:col-span-2 space-y-6">
+        <h2 class_="text-2xl font-display font-bold flex items-center gap-2">(Icons.clock "w-6 h-6 text-brand-primary") "Recently Watched"</h2>
+        <div class_="bg-white/5 border border-white/10 rounded-3xl p-6">
+          <div class_="space-y-4">
+            (Yuka.fragment
+               (List.map
+                  (fun (media : Tmdb.media) ->
+                    <a href=(href media.card)
+                      class_="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 border border-transparent hover:border-white/10 transition-colors group">
+                      <img src=(image ~size:"w300" media.card.poster) alt=media.card.title class_="w-12 h-16 object-cover rounded-lg shadow-md" />
+                      <div class_="flex-1">
+                        <h4 class_="text-white font-bold group-hover:text-brand-primary transition-colors">(Yuka.text media.card.title)</h4>
+                        <p class_="text-sm text-gray-400 flex items-center gap-2 mt-1">
+                          (if is_tv media then Icons.tv "w-3 h-3" else Icons.film "w-3 h-3")
+                          (Yuka.text (if is_tv media then "TV Series" else "Movie"))
+                        </p>
+                      </div>
+                    </a>)
+                  (take 10 medias)))
+          </div>
+          (if List.length medias > 10 then
+             <div class_="mt-6 text-center">
+               <a href=(Routes.history ()) class_="text-brand-primary hover:text-red-400 font-medium transition-colors">"View Full History →"</a>
+             </div>
+           else Yuka.empty)
+        </div>
+      </div>
+    </div>
+  </div>
+
+let stats ~(me : Loaders.me) () =
+  page ~title:"Analytics" (fun () ->
+      match me.history with
+      | [] ->
+          <div class_="flex flex-col items-center justify-center h-[80vh] space-y-6 text-center">
+            <div class_="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-4">(Icons.chart "w-12 h-12 text-brand-primary/50")</div>
+            <h2 class_="text-4xl font-display font-bold">"No Data Yet"</h2>
+            <p class_="text-gray-400 text-lg max-w-md">"Start watching movies and TV shows to build your personalized viewing analytics!"</p>
+            <a href=(Routes.browse ()) class_="px-8 py-3 bg-brand-primary text-white rounded-xl font-bold hover:bg-red-700 transition-colors">"Explore Content"</a>
+          </div>
+      | entries ->
+          await (with_media (List.map (fun (entry : Saved.History.entry) -> ((), entry.item)) entries)) analytics)
+
+(* Movie, trailer and show *)
+
+let detail_badges ~label ~(card : Tmdb.card) =
+  <div class_="flex items-center space-x-3">
+    <span class_="bg-brand-primary text-white text-[10px] md:text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-brand-primary/20">
+      (Yuka.text label)
+    </span>
+    <div class_="flex items-center space-x-1 text-yellow-500">
+      (Icons.star "w-4 h-4 fill-yellow-500")
+      <span class_="text-sm font-bold">(Yuka.text (rating card.rating ^ " / 10"))</span>
+    </div>
+  </div>
+
+let detail_hero ~me ~label ~(card : Tmdb.card) ~trailer ~facts ~watch =
+  <Yuka.Client>
+    <Trailer_hero backdrop=(image ~size:"original" card.backdrop) trailer=(Option.map Tmdb.youtube_background trailer) title=card.title>
+      <div class_="absolute inset-0 flex flex-col justify-end p-6 md:p-16 z-10 max-w-5xl">
+        <div class_="space-y-4 md:space-y-6 animate-[fadeIn_0.5s_ease_both]">
+          (detail_badges ~label ~card)
+          <h1 class_="text-4xl sm:text-5xl md:text-7xl font-display font-bold tracking-tight leading-tight">(Yuka.text card.title)</h1>
+          <div class_="flex flex-wrap items-center gap-4 md:space-x-6 mt-4 md:mt-6 text-gray-300 font-medium text-sm md:text-base">facts</div>
+          <p class_="mt-4 md:mt-8 text-base md:text-xl text-gray-300 font-light leading-relaxed max-w-3xl line-clamp-4 md:line-clamp-none">
+            (Yuka.text card.overview)
+          </p>
+        </div>
+        <div class_="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mt-6 md:mt-10">
+          watch
+          (watchlist_button ~me ~style:Hero card)
+          <Yuka.Client><Share_button title=card.title /></Yuka.Client>
+        </div>
+      </div>
+    </Trailer_hero>
+  </Yuka.Client>
+
+let watch_now ~href:url label =
+  <a href=url
+    class_="bg-brand-primary hover:bg-red-700 text-white px-10 py-4 rounded-xl font-bold flex items-center justify-center space-x-2 transition-transform hover:scale-105 shadow-2xl shadow-brand-primary/20">
+    (Icons.play "w-5 h-5 fill-white") <span>(Yuka.text label)</span>
+  </a>
+
+let overview text =
+  <section>
+    <h2 class_="text-3xl font-display font-bold mb-6 tracking-tight">"Overview"</h2>
+    <p class_="text-xl text-gray-400 leading-relaxed font-light">(Yuka.text text)</p>
+  </section>
+
+let top_cast cast =
+  <section>
+    <h2 class_="text-3xl font-display font-bold mb-6 tracking-tight">"Top Cast"</h2>
+    (cast_list cast)
+  </section>
+
+let side_info ~title rows =
+  <section class_="bg-white/5 rounded-3xl pt-10 px-6 md:px-8 pb-8 border border-white/10 space-y-8">
+    <h3 class_="text-xl font-display font-bold tracking-tight text-white">(Yuka.text title)</h3>
+    <div class_="space-y-4">(Yuka.fragment rows)</div>
+  </section>
+
+let value text = <p class_="text-base font-medium">(Yuka.text text)</p>
+
+let movie ~id ~(movie : Tmdb.movie) ~me () =
+  let card = movie.movie in
+  page ~title:card.title (fun () ->
+      <div class_="space-y-12 pb-20">
+        <Yuka.Client><Record_view kind=Movie id play=Viewed /></Yuka.Client>
+        (detail_hero ~me ~label:"Movie" ~card ~trailer:movie.movie_trailer
+           ~watch:(watch_now ~href:(Routes.watch ~kind:Movie ~id ()) "Watch Now")
+           ~facts:
+             (Yuka.fragment
+                [
+                  <div class_="flex items-center space-x-2">(Icons.clock "w-4 h-4") <span>(Yuka.text (runtime movie.runtime))</span></div>;
+                  <div class_="flex items-center space-x-2">(Icons.calendar "w-4 h-4") <span>(Yuka.text (year_of card.date))</span></div>;
+                  <p class_="text-brand-primary">(Yuka.text (String.concat ", " (List.map snd movie.movie_genres)))</p>;
+                ]))
+        <div class_="flex flex-col lg:flex-row items-start gap-8 lg:gap-12 mt-8 md:mt-12 relative z-10 px-4 md:px-8">
+          <div class_="flex-1 space-y-12 md:space-y-16 w-full">
+            (overview card.overview)
+            (trailer_section movie.movie_trailer)
+            (top_cast movie.movie_cast)
+          </div>
+          <div class_="w-full lg:w-80 shrink-0 space-y-8">
+            (side_info ~title:"Production Info"
+               [
+                 (match movie.directors with
+                  | [] -> Yuka.empty
+                  | directors -> info_row ~label:(if List.length directors > 1 then "Directors" else "Director") (people_links directors));
+                 info_row ~label:"Budget" (value (dollars movie.budget));
+                 info_row ~label:"Revenue" (value (dollars movie.revenue));
+                 info_row ~label:"Languages" (value (String.concat ", " movie.languages));
+                 imdb_row movie.movie_imdb;
+               ])
+            (match movie.belongs_to with
+             | Some collection ->
+                 <section class_="space-y-4">
+                   <h3 class_="text-xl font-display font-bold tracking-tight px-2">"Collection"</h3>
+                   <a href=(Routes.collection ~id:collection.collection_id ()) class_="block group">
+                     <div class_="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group-hover:border-brand-primary transition-colors">
+                       <img src=(image collection.collection_backdrop) alt=collection.collection_name
+                         class_="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-70 group-hover:opacity-100" />
+                       <div class_="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                       <div class_="absolute bottom-4 left-4 right-4">
+                         <p class_="text-sm font-bold text-white leading-tight drop-shadow-md">(Yuka.text collection.collection_name)</p>
+                       </div>
+                     </div>
+                   </a>
+                 </section>
+             | None -> Yuka.empty)
+            (similar_grid ~title:"Similar Movies" movie.movie_similar)
+          </div>
+        </div>
+      </div>)
+
+let trailer_box ~(movie : Tmdb.movie) ~close =
+  <div class_="relative w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/10 animate-[pop_0.2s_ease_both]">
+    <div class_="absolute top-4 right-4 z-10">close</div>
+    (match movie.movie_trailer with
+     | Some key ->
+         <iframe src=(Tmdb.youtube key ^ "?autoplay=1") title=(movie.movie.title ^ " Trailer") class_="w-full h-full border-none"
+           allow="autoplay; encrypted-media" allowfullscreen=true />
+     | None ->
+         <div class_="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
+           <p class_="text-xl font-medium">"No trailer available for this movie"</p>
+         </div>)
+    <div class_="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black to-transparent pointer-events-none">
+      <h3 class_="text-2xl font-display font-bold text-white">(Yuka.text movie.movie.title)</h3>
+    </div>
+  </div>
+
+let trailer ~id ~(movie : Tmdb.movie) ~me:_ () =
+  page ~title:(movie.movie.title ^ " Trailer") (fun () ->
+      <div class_="flex items-center justify-center min-h-[80vh]">
+        (trailer_box ~movie
+           ~close:
+             <a href=(Routes.movie ~id ()) aria_label="Close" class_="block p-2 rounded-full bg-black/50 hover:bg-black/80 text-white transition-colors">
+               (Icons.x "w-6 h-6")
+             </a>)
+      </div>)
+
+let trailer_dialog ~id:_ ~(movie : Tmdb.movie) ~me:_ () =
+  page ~title:(movie.movie.title ^ " Trailer") (fun () ->
+      <div class_="fixed inset-0 z-[100] flex items-center justify-center p-4" role=`dialog aria_modal=true
+        aria_label=(movie.movie.title ^ " trailer")>
+        <Yuka.Client><Overlay_close backdrop=true /></Yuka.Client>
+        (trailer_box ~movie ~close:<Yuka.Client><Overlay_close backdrop=false /></Yuka.Client>)
+      </div>)
+
+let episode_row ~id ~season (episode : Tmdb.episode) =
+  <a href=(Routes.watch ~kind:Tv ~id ~season ~episode:episode.episode_number ())
+    class_="group flex items-center gap-4 p-4 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 hover:border-brand-primary/30 transition-all cursor-pointer">
+    <div class_="relative shrink-0 w-36 aspect-video rounded-xl overflow-hidden bg-white/5">
+      (match episode.still with
+       | Some _ ->
+           <img src=(image ~size:"w300" episode.still) alt=episode.episode_name loading=`lazy_
+             class_="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+       | None -> <div class_="w-full h-full flex items-center justify-center">(Icons.tv "w-6 h-6 text-gray-600")</div>)
+      <div class_="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div class_="w-10 h-10 rounded-full bg-brand-primary/90 flex items-center justify-center">(Icons.play "w-4 h-4 fill-white text-white")</div>
+      </div>
+    </div>
+    <div class_="flex-1 min-w-0">
+      <div class_="flex items-center gap-2 mb-1">
+        <span class_="text-xs font-bold text-brand-primary uppercase tracking-widest">(Yuka.text (Printf.sprintf "E%d" episode.episode_number))</span>
+        (if episode.episode_rating > 0. then
+           <span class_="flex items-center gap-1 text-xs text-yellow-500">(Icons.star "w-3 h-3 fill-yellow-500") (Yuka.text (rating episode.episode_rating))</span>
+         else Yuka.empty)
+        (if episode.episode_minutes > 0 then <span class_="text-xs text-gray-500">(Yuka.text (Printf.sprintf "%dm" episode.episode_minutes))</span>
+         else Yuka.empty)
+      </div>
+      <h4 class_="font-semibold text-white line-clamp-1 group-hover:text-brand-primary transition-colors">(Yuka.text episode.episode_name)</h4>
+      <p class_="text-sm text-gray-500 line-clamp-2 mt-1">(Yuka.text episode.episode_overview)</p>
+    </div>
+    <div class_="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div class_="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center">(Icons.play "w-4 h-4 fill-white text-white")</div>
+    </div>
+  </a>
+
+(* A section whose list a checkbox in its heading hides, with no script. *)
+let collapse_toggle ~group label =
+  <label class_="text-gray-400 hover:text-white transition-colors cursor-pointer" title=label>
+    <input type_=`checkbox class_="sr-only" aria_label=label />
+    (Icons.chevron_up ("w-5 h-5 " ^ group ^ ":hidden"))
+    (Icons.chevron_down ("w-5 h-5 hidden " ^ group ^ ":block"))
+  </label>
+
+let show ~id ~season ~(show : Tmdb.show) ~(me : Loaders.me) () =
+  let card = show.show in
+  let first = match show.seasons with first :: _ -> first.season_number | [] -> 1 in
+  let selected = Option.value season ~default:first in
+  let progress =
+    List.find_map
+      (fun (entry : Saved.History.entry) ->
+        match entry.play with
+        | Episode (season, episode) when entry.item = { Saved.kind = Tv; id } -> Some (season, episode)
+        | _ -> None)
+      me.history
+  in
+  let watch =
+    match progress with
+    | Some (season, episode) -> watch_now ~href:(Routes.watch ~kind:Tv ~id ~season ~episode ()) "Continue Watching"
+    | None -> watch_now ~href:(Routes.watch ~kind:Tv ~id ~season:first ~episode:1 ()) "Watch Now"
+  in
+  page ~title:card.title (fun () ->
+      <div class_="space-y-12 pb-20">
+        (detail_hero ~me ~label:"TV Series" ~card ~trailer:show.show_trailer ~watch
+           ~facts:
+             (Yuka.fragment
+                [
+                  <div class_="flex items-center space-x-2">(Icons.calendar "w-4 h-4") <span>(Yuka.text (year_of card.date))</span></div>;
+                  <span class_="text-gray-500">"·"</span>;
+                  <span>(Yuka.text (Printf.sprintf "%d Season%s" show.number_of_seasons (if show.number_of_seasons <> 1 then "s" else "")))</span>;
+                  <span class_="text-gray-500">"·"</span>;
+                  <span>(Yuka.text (Printf.sprintf "%d Episodes" show.number_of_episodes))</span>;
+                  <span class_="text-brand-primary">(Yuka.text show.status)</span>;
+                ]))
+        <div class_="flex flex-col lg:flex-row items-start gap-8 lg:gap-12 mt-8 md:mt-12 relative z-10 px-4 md:px-8">
+          <div class_="flex-1 w-full space-y-12 md:space-y-16">
+            (overview card.overview)
+            (trailer_section show.show_trailer)
+            <section class_="space-y-6 group/eps">
+              <div class_="flex items-center justify-between">
+                <h2 class_="text-3xl font-display font-bold tracking-tight">"Episodes"</h2>
+                (collapse_toggle ~group:"group-has-checked/eps" "Show or hide the episodes")
+              </div>
+              <div class_="flex overflow-x-auto no-scrollbar space-x-2 pb-2">
+                (Yuka.fragment
+                   (List.map
+                      (fun (s : Tmdb.season) ->
+                        <a href=(Routes.show ~id ~season:s.season_number ()) data_yuka_keep_scroll="" data_yuka_replace=""
+                          class_=(if s.season_number = selected then "px-5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all bg-brand-primary text-white"
+                                  else "px-5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white")>
+                          (Yuka.text (Printf.sprintf "Season %d" s.season_number))
+                        </a>)
+                      show.seasons))
+              </div>
+              <div class_="space-y-3 group-has-checked/eps:hidden">
+                (await ~blocking:(`Timeout 0.3)
+                   ~loading:(Yuka.fragment (List.init 5 (fun _ -> <div class_="h-24 rounded-2xl bg-white/5 animate-pulse" />)))
+                   (Tmdb.season id selected)
+                   (fun episodes -> Yuka.fragment (List.map (episode_row ~id ~season:selected) episodes)))
+              </div>
+            </section>
+            (top_cast show.show_cast)
+          </div>
+          <div class_="w-full lg:w-80 shrink-0 space-y-8">
+            (side_info ~title:"Show Info"
+               [
+                 (match show.creators with
+                  | [] -> Yuka.empty
+                  | creators -> info_row ~label:(if List.length creators > 1 then "Creators" else "Creator") (people_links creators));
+                 (if show.status <> "" then info_row ~label:"Status" (value show.status) else Yuka.empty);
+                 info_row ~label:"Seasons" (value (Int.to_string show.number_of_seasons));
+                 info_row ~label:"Episodes" (value (Int.to_string show.number_of_episodes));
+                 imdb_row show.show_imdb;
+               ])
+            (similar_grid ~title:"Similar Shows" show.show_similar)
+          </div>
+        </div>
+      </div>)
+
+(* Person and collection *)
+
+let back_button =
+  <Yuka.Client>
+    <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors group">
+      (Icons.arrow_left "w-4 h-4") "Back"
+    </Back_button>
+  </Yuka.Client>
+
+let age birthday =
+  match String.split_on_char '-' birthday with
+  | [ year; month; day ] -> (
+      match (int_of_string_opt year, int_of_string_opt month, int_of_string_opt day) with
+      | Some year, Some month, Some day ->
+          let now = Unix.localtime (Unix.time ()) in
+          let this_year = now.tm_year + 1900 in
+          let had_birthday = (now.tm_mon + 1, now.tm_mday) >= (month, day) in
+          Some (this_year - year - if had_birthday then 0 else 1)
+      | _ -> None)
+  | _ -> None
+
+let chip content =
+  <span class_="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 max-w-xs truncate">content</span>
+
+let person ~id ~tab ~(person : Tmdb.person) ~me:_ () =
+  let credits = person.filmography in
+  let movies = List.filter (fun (entry : Tmdb.filmography) -> entry.credit.kind = Movie) credits in
+  let shows = List.filter (fun (entry : Tmdb.filmography) -> entry.credit.kind = Tv) credits in
+  let shown = match tab with "movie" -> movies | "tv" -> shows | _ -> credits in
+  page ~title:person.person_name (fun () ->
+      <div class_="pb-24 space-y-10">
+        back_button
+        <div class_="flex flex-col sm:flex-row gap-8 items-start">
+          <div class_="shrink-0 animate-[fadeIn_0.4s_ease_both]">
+            (match person.photo with
+             | Some _ ->
+                 <img src=(image person.photo) alt=person.person_name
+                   class_="w-48 h-48 sm:w-60 sm:h-60 rounded-3xl object-cover shadow-2xl border border-white/10" />
+             | None ->
+                 <div class_="w-48 h-48 sm:w-60 sm:h-60 rounded-3xl bg-white/5 flex items-center justify-center border border-white/10">
+                   (Icons.user "w-20 h-20 text-gray-600")
+                 </div>)
+          </div>
+          <div class_="flex-1 space-y-4 animate-[fadeIn_0.5s_ease_both]">
+            <div>
+              <p class_="text-brand-primary text-xs font-bold uppercase tracking-widest mb-2">
+                (Yuka.text (if person.known_for_department = "" then "Actor" else person.known_for_department))
+              </p>
+              <h1 class_="text-4xl sm:text-5xl font-display font-bold leading-tight">(Yuka.text person.person_name)</h1>
+            </div>
+            <div class_="flex flex-wrap gap-4 text-sm text-gray-400">
+              (match Option.bind person.birthday age with
+               | Some years -> chip (Yuka.fragment [ Icons.calendar "w-3.5 h-3.5"; Yuka.text (Printf.sprintf "%d years old" years) ])
+               | None -> Yuka.empty)
+              (match person.place_of_birth with Some place -> chip (Yuka.text ("📍 " ^ place)) | None -> Yuka.empty)
+              (chip (Yuka.fragment [ Icons.film "w-3.5 h-3.5 text-brand-primary"; Yuka.text (Printf.sprintf "%d Movies" (List.length movies)) ]))
+              (chip (Yuka.fragment [ Icons.tv "w-3.5 h-3.5 text-blue-400"; Yuka.text (Printf.sprintf "%d TV Shows" (List.length shows)) ]))
+            </div>
+            (if person.biography = "" then Yuka.empty
+             else
+               <div class_="group/bio">
+                 <p class_="text-gray-400 leading-relaxed text-base line-clamp-4 group-has-checked/bio:line-clamp-none whitespace-pre-line">
+                   (Yuka.text person.biography)
+                 </p>
+                 (if String.length person.biography > 400 then
+                    <label class_="inline-block text-brand-primary text-sm mt-2 hover:underline cursor-pointer">
+                      <input type_=`checkbox class_="sr-only" />
+                      <span class_="group-has-checked/bio:hidden">"Read more"</span>
+                      <span class_="hidden group-has-checked/bio:inline">"Show less"</span>
+                    </label>
+                  else Yuka.empty)
+               </div>)
+          </div>
+        </div>
+        <section class_="space-y-6">
+          <div class_="flex items-center justify-between gap-4 flex-wrap">
+            <h2 class_="text-2xl font-display font-bold">"Filmography"</h2>
+            <div class_="flex gap-2">
+              (Yuka.fragment
+                 (List.map
+                    (fun (key, label, icon) ->
+                      <a href=(Routes.person ~id ~tab:key ()) data_yuka_keep_scroll="" data_yuka_replace=""
+                        class_=(if key = tab || (key = "all" && not (List.mem tab [ "movie"; "tv" ])) then
+                                  "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all bg-brand-primary text-white"
+                                else
+                                  "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white")>
+                        (match icon with Some icon -> icon "w-3.5 h-3.5" | None -> Yuka.empty)
+                        (Yuka.text label)
+                      </a>)
+                    [
+                      ("all", Printf.sprintf "All (%d)" (List.length credits), None);
+                      ("movie", Printf.sprintf "Movies (%d)" (List.length movies), Some Icons.film);
+                      ("tv", Printf.sprintf "TV (%d)" (List.length shows), Some Icons.tv);
+                    ]))
+            </div>
+          </div>
+          (match shown with
+           | [] -> <p class_="text-gray-500 text-center py-12">"No credits found."</p>
+           | shown ->
+               <div class_="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                 (Yuka.fragment
+                    (List.map
+                       (fun (entry : Tmdb.filmography) ->
+                         let credit = entry.credit in
+                         <a href=(href credit) class_="group block">
+                           <div class_="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 relative mb-2 border border-white/5 group-hover:border-brand-primary/40 transition-colors">
+                             <img src=(image credit.poster) alt=credit.title loading=`lazy_
+                               class_="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                             <div class_="absolute top-2 left-2">
+                               <span class_=(if credit.kind = Movie then "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-brand-primary/90 text-white"
+                                             else "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-blue-500/90 text-white")>
+                                 (Yuka.text (if credit.kind = Movie then "Movie" else "TV"))
+                               </span>
+                             </div>
+                             (if credit.rating > 0. then
+                                <div class_="absolute bottom-2 right-2 flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-2 py-0.5">
+                                  (Icons.star "w-3 h-3 text-yellow-400 fill-yellow-400")
+                                  <span class_="text-[10px] text-white font-bold">(Yuka.text (rating credit.rating))</span>
+                                </div>
+                              else Yuka.empty)
+                           </div>
+                           <p class_="text-sm font-semibold text-white line-clamp-2 group-hover:text-brand-primary transition-colors leading-tight">
+                             (Yuka.text credit.title)
+                           </p>
+                           (if entry.as_ <> "" then <p class_="text-xs text-gray-500 line-clamp-1 italic mt-0.5">(Yuka.text entry.as_)</p>
+                            else Yuka.empty)
+                           (match Tmdb.year credit with
+                            | Some year -> <p class_="text-xs text-gray-600 mt-0.5">(Yuka.text year)</p>
+                            | None -> Yuka.empty)
+                         </a>)
+                       shown))
+               </div>)
+        </section>
+      </div>)
+
+let collection ~id:_ ~(collection : Tmdb.collection) ~me () =
+  let info = collection.collection in
+  page ~title:info.collection_name (fun () ->
+      <div class_="space-y-12 pb-20">
+        <div class_="relative h-[40vh] md:h-[50vh] -m-4 md:-m-8 overflow-hidden">
+          <img src=(image ~size:"original" info.collection_backdrop) alt=info.collection_name class_="w-full h-full object-cover" />
+          <div class_="absolute inset-0 bg-gradient-to-t from-brand-bg via-brand-bg/60 to-transparent" />
+          <div class_="absolute inset-0 bg-gradient-to-r from-brand-bg/80 to-transparent" />
+          <div class_="absolute inset-0 flex flex-col justify-end p-6 md:p-16 z-10 max-w-5xl">
+            <div class_="space-y-4 animate-[fadeIn_0.5s_ease_both]">
+              <Yuka.Client>
+                <Back_button class_name="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors group mb-2">
+                  <div class_="w-8 h-8 rounded-full bg-white/5 group-hover:bg-white/10 flex items-center justify-center transition-colors">
+                    (Icons.arrow_left "w-4 h-4")
+                  </div>
+                  <span class_="text-sm font-medium">"Back"</span>
+                </Back_button>
+              </Yuka.Client>
+              <h1 class_="text-4xl sm:text-5xl md:text-6xl font-display font-bold tracking-tight leading-tight text-white drop-shadow-2xl">
+                (Yuka.text info.collection_name)
+              </h1>
+              <p class_="text-base md:text-lg text-gray-300 font-light leading-relaxed max-w-3xl drop-shadow-lg line-clamp-3 md:line-clamp-none">
+                (Yuka.text collection.collection_overview)
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class_="px-4 md:px-8 mt-8">
+          <h2 class_="text-2xl font-display font-bold tracking-tight mb-6">
+            (Yuka.text (Printf.sprintf "Movies (%d)" (List.length collection.parts)))
+          </h2>
+          <div class_=grid_class>(Yuka.fragment (List.map (card ~me) collection.parts))</div>
+        </div>
+      </div>)
+
+(* Watch *)
+
+let watch_view ~kind ~id ~season ~episode ~(me : Loaders.me) ~(media : Tmdb.media) (episodes : Tmdb.episode list) =
+  let card = media.card in
+  let is_tv = kind = Model.Tv in
+  let count = List.length episodes in
+  let link episode = Routes.watch ~kind ~id ~season ~episode () in
+  let current = List.find_opt (fun (e : Tmdb.episode) -> e.episode_number = episode) episodes in
+  let episode_title = Option.map (fun (e : Tmdb.episode) -> e.episode_name) current in
+  let seasons =
+    List.map
+      (fun (s : Tmdb.season) ->
+        {
+          Model.label = Printf.sprintf "Season %d" s.season_number;
+          url = Routes.watch ~kind ~id ~season:s.season_number ~episode:1 ();
+          selected = s.season_number = season;
+        })
+      media.media_seasons
+  in
+  let picker = List.map (fun (e : Tmdb.episode) -> { Model.number = e.episode_number; name = e.episode_name }) episodes in
+  let providers = Providers.for_title ~kind ~tmdb:id ~imdb:media.imdb_id ~season ~episode in
+  let play : Model.play = if is_tv then Episode (season, episode) else Played in
+  <div class_="min-h-screen bg-[#070809]">
+    <Yuka.Client><Record_view kind id play /></Yuka.Client>
+    <Yuka.Client>
+      <Player kind id title=card.title episode_title season episode seasons episodes=picker providers provider=me.provider
+        autoplay=me.autoplay backdrop=(Option.map (fun path -> image ~size:"original" (Some path)) card.backdrop)
+        saved=(saved me card)
+        prev=(if is_tv && episode > 1 then Some (link (episode - 1)) else None)
+        next=(if is_tv && episode < count then Some (link (episode + 1)) else None) />
+    </Yuka.Client>
+    <div class_="max-w-screen-2xl mx-auto px-4 md:px-6 py-6 md:py-8 grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div class_="xl:col-span-2 space-y-8">
+        <div class_="space-y-4 animate-[fadeIn_0.4s_ease_both]">
+          <div class_="flex items-start gap-4">
+            (match card.poster with
+             | Some _ -> <img src=(image card.poster) alt=card.title class_="w-16 md:w-20 rounded-xl shadow-xl shrink-0 hidden sm:block" />
+             | None -> Yuka.empty)
+            <div class_="flex-1 min-w-0">
+              <h2 class_="text-2xl md:text-3xl font-display font-bold text-white leading-tight">
+                (Yuka.text card.title)
+                (match episode_title with
+                 | Some name when is_tv ->
+                     <span class_="block text-xl md:text-2xl text-gray-400 font-normal mt-1">
+                       (Yuka.text (name ^ " "))
+                       <span class_="text-brand-primary text-lg font-medium">(Yuka.text (Printf.sprintf "(S%d E%d)" season episode))</span>
+                     </span>
+                 | _ -> Yuka.empty)
+              </h2>
+              <div class_="flex flex-wrap items-center gap-4 mt-3 text-sm text-gray-400">
+                (if card.rating > 0. then
+                   <span class_="flex items-center gap-1 text-yellow-400">
+                     (Icons.star "w-4 h-4 fill-yellow-400")
+                     <span class_="font-bold text-white">(Yuka.text (rating card.rating))</span>
+                     <span class_="text-gray-500">"/10"</span>
+                   </span>
+                 else Yuka.empty)
+                (if media.minutes > 0 && not is_tv then
+                   <span class_="flex items-center gap-1">(Icons.clock "w-4 h-4") (Yuka.text (runtime media.minutes))</span>
+                 else Yuka.empty)
+                (if card.date <> "" then
+                   <span class_="flex items-center gap-1">(Icons.calendar "w-4 h-4") (Yuka.text (year_of card.date))</span>
+                 else Yuka.empty)
+                (if media.genre_names <> [] then
+                   <span class_="text-brand-primary">(Yuka.text (String.concat " · " (List.map snd (take 3 media.genre_names))))</span>
+                 else Yuka.empty)
+              </div>
+            </div>
+          </div>
+          (if card.overview <> "" then <p class_="text-gray-400 leading-relaxed text-base">(Yuka.text card.overview)</p> else Yuka.empty)
+          <div class_="flex items-center gap-3 flex-wrap">
+            <a href=(href card) class_="flex items-center gap-2 text-sm bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white px-4 py-2 rounded-lg transition-all">
+              (Icons.play "w-4 h-4") "View Details"
+            </a>
+          </div>
+        </div>
+        (match media.media_cast with
+         | [] -> Yuka.empty
+         | cast ->
+             <section class_="space-y-4">
+               <h3 class_="text-lg font-display font-bold text-white">"Cast"</h3>
+               <div class_="flex gap-5 overflow-x-auto no-scrollbar pb-2">
+                 (Yuka.fragment
+                    (List.map
+                       (fun (person : Tmdb.credit) ->
+                         <a href=(Routes.person ~id:person.person_id ()) class_="shrink-0 text-center group w-24">
+                           <div class_="w-20 h-20 rounded-full overflow-hidden bg-white/5 mb-2 border-2 border-white/5 group-hover:border-brand-primary transition-colors mx-auto">
+                             <img src=(image person.profile) alt=person.name loading=`lazy_ class_="w-full h-full object-cover" />
+                           </div>
+                           <p class_="text-xs font-medium text-white group-hover:text-brand-primary transition-colors leading-tight">(Yuka.text person.name)</p>
+                           <p class_="text-xs text-gray-600 line-clamp-1 italic mt-0.5">(Yuka.text person.role)</p>
+                         </a>)
+                       (take 12 cast)))
+               </div>
+             </section>)
+      </div>
+      <div class_="space-y-6">
+        (if is_tv && episodes <> [] then
+           <section class_="bg-white/3 rounded-2xl border border-white/5 overflow-hidden group/list">
+             <label class_="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors cursor-pointer">
+               <input type_=`checkbox class_="sr-only" aria_label="Show or hide the episodes" />
+               <div class_="flex items-center gap-2">
+                 (Icons.tv "w-4 h-4 text-brand-primary")
+                 <span class_="font-bold text-white text-sm">(Yuka.text (Printf.sprintf "Season %d Episodes" season))</span>
+                 <span class_="text-xs text-gray-500 bg-white/10 px-2 py-0.5 rounded-full">(Yuka.int count)</span>
+               </div>
+               (Icons.chevron_up "w-4 h-4 text-gray-500 group-has-checked/list:hidden")
+               (Icons.chevron_down "w-4 h-4 text-gray-500 hidden group-has-checked/list:block")
+             </label>
+             <div class_="max-h-[60vh] overflow-y-auto divide-y divide-white/5 group-has-checked/list:hidden">
+               (Yuka.fragment
+                  (List.map
+                     (fun (ep : Tmdb.episode) ->
+                       let active = ep.episode_number = episode in
+                       <a href=(link ep.episode_number)
+                         class_=(if active then "w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:bg-white/5 bg-brand-primary/10 border-l-2 border-brand-primary"
+                                 else "w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:bg-white/5")>
+                         <div class_="shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-white/5 relative">
+                           (match ep.still with
+                            | Some _ -> <img src=(image ~size:"w300" ep.still) alt=ep.episode_name loading=`lazy_ class_="w-full h-full object-cover" />
+                            | None -> <div class_="w-full h-full flex items-center justify-center">(Icons.tv "w-4 h-4 text-gray-600")</div>)
+                           (if active then
+                              <div class_="absolute inset-0 bg-brand-primary/30 flex items-center justify-center">
+                                <div class_="w-5 h-5 rounded-full bg-brand-primary flex items-center justify-center">(Icons.play "w-2.5 h-2.5 fill-white text-white")</div>
+                              </div>
+                            else Yuka.empty)
+                         </div>
+                         <div class_="flex-1 min-w-0">
+                           <p class_=(if active then "text-xs font-bold uppercase tracking-wide mb-0.5 text-brand-primary" else "text-xs font-bold uppercase tracking-wide mb-0.5 text-gray-500")>
+                             (Yuka.text (Printf.sprintf "E%d" ep.episode_number))
+                           </p>
+                           <p class_=(if active then "text-sm font-medium line-clamp-1 text-white" else "text-sm font-medium line-clamp-1 text-gray-300")>
+                             (Yuka.text ep.episode_name)
+                           </p>
+                           (if ep.episode_minutes > 0 then <p class_="text-xs text-gray-600 mt-0.5">(Yuka.text (Printf.sprintf "%dm" ep.episode_minutes))</p>
+                            else Yuka.empty)
+                         </div>
+                       </a>)
+                     episodes))
+             </div>
+           </section>
+         else
+           match media.media_similar with
+           | [] -> Yuka.empty
+           | similar ->
+               <section class_="space-y-4">
+                 <h3 class_="text-lg font-display font-bold text-white">"More Like This"</h3>
+                 <div class_="grid grid-cols-2 gap-3">
+                   (Yuka.fragment
+                      (List.map
+                         (fun (item : Tmdb.card) ->
+                           <a href=(Routes.watch ~kind:item.kind ~id:item.id ()) class_="group">
+                             <div class_="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 mb-2">
+                               <img src=(image item.poster) alt=item.title loading=`lazy_
+                                 class_="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                             </div>
+                             <p class_="text-xs font-semibold text-gray-300 group-hover:text-white line-clamp-1 transition-colors">(Yuka.text item.title)</p>
+                           </a>)
+                         (take 6 similar)))
+                 </div>
+               </section>)
+      </div>
+    </div>
+  </div>
+
+let watch ~kind ~id ~season ~episode ~me ~(media : Tmdb.media) () =
+  let title =
+    match kind with
+    | Model.Tv -> Printf.sprintf "%s - S%dE%d" media.card.title season episode
+    | Movie -> media.card.title
+  in
+  page ~title (fun () ->
+      match kind with
+      | Movie -> watch_view ~kind ~id ~season:1 ~episode:1 ~me ~media []
+      | Tv -> await (Tmdb.season id season) (watch_view ~kind ~id ~season ~episode ~me ~media))
+
+(* Random, not found and error *)
+
+let random ~random:() () = Yuka.Server.page (fun () -> Yuka.empty)
+
+let standalone ~title ~text =
+  <div class_="min-h-screen flex flex-col items-center justify-center gap-6 text-center px-6">
+    <div class_="w-16 h-16 rounded-2xl bg-brand-primary flex items-center justify-center shadow-lg shadow-brand-primary/40">
+      (Icons.flame "w-8 h-8 text-white fill-white")
+    </div>
+    <h1 class_="text-4xl font-display font-bold">(Yuka.text title)</h1>
+    <p class_="text-gray-400 max-w-md">(Yuka.text text)</p>
+    <a href=(Routes.home ()) class_="px-8 py-3 bg-brand-primary text-white rounded-xl font-bold hover:bg-red-700 transition-colors">"Back to Home"</a>
+  </div>
+
+let not_found ~path () =
+  page ~title:"Not found" (fun () -> standalone ~title:"Nothing here" ~text:("There is no page at " ^ path ^ "."))
+
+let error () =
+  page ~title:"Error" (fun () ->
+      standalone ~title:"Something went wrong"
+        ~text:
+          (if Tmdb.configured () then "TMDB did not answer. Try again in a moment."
+           else "TMDB_API_KEY is not set: add it to the environment or to .env, then restart the server."))
