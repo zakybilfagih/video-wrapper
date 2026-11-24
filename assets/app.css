@@ -83,6 +83,20 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
+/* The bar at the top while a client navigation loads (shared/nav_progress.mlx). */
+.nav-progress {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 2px; pointer-events: none;
+  background: var(--color-brand-primary); box-shadow: 0 0 8px var(--color-brand-primary);
+  transform-origin: 0 50%; transform: scaleX(0); opacity: 0;
+}
+.nav-progress[data-phase="loading"] { opacity: 1; animation: navGrow 8s cubic-bezier(0.1, 0.6, 0.2, 1) 120ms both; }
+.nav-progress[data-phase="finished"] { transform: scaleX(1); transition: transform 200ms ease-out, opacity 250ms ease 200ms; }
+@keyframes navGrow { from { transform: scaleX(0); } to { transform: scaleX(0.92); } }
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress[data-phase="loading"] { animation-duration: 1ms; animation-timing-function: step-end; }
+  .nav-progress[data-phase="finished"] { transition: none; }
+}
+
 /* Each page fades in, also after a client navigation. */
 main > * {
   animation: fadeIn 0.3s ease both;

@@ -11,6 +11,7 @@ let page ~title body = Yuka.Server.page ~title:(title ^ " | CinePulse") body
    an overlay route can show over a page. *)
 let shell ~children () =
   <div class_="flex min-h-screen bg-brand-bg">
+    <Yuka.Client start=`Idle><Nav_progress /></Yuka.Client>
     <Yuka.Client><Side_nav /></Yuka.Client>
     <main class_="flex-1 md:ml-64 pt-20 pb-8 px-4 md:pt-8 md:px-8 overflow-x-hidden relative">
       (if Tmdb.configured () then Yuka.empty
@@ -1137,6 +1138,7 @@ let watch_view ~kind ~id ~season ~episode ~(me : Loaders.me) ~(media : Tmdb.medi
   let providers = Providers.for_title ~kind ~tmdb:id ~imdb:media.imdb_id ~season ~episode in
   let play : Model.play = if is_tv then Episode (season, episode) else Played in
   <div class_="min-h-screen bg-[#070809]">
+    <Yuka.Client start=`Idle><Nav_progress /></Yuka.Client>
     <Yuka.Client><Record_view kind id play /></Yuka.Client>
     <Yuka.Client>
       <Player kind id title=card.title episode_title season episode seasons episodes=picker providers provider=me.provider
