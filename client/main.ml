@@ -35,25 +35,6 @@ let on_visible : string -> (unit -> unit) -> unit -> unit =
   return function () { observer.disconnect() };
 }|}]
 
-let follow_scroll : string -> unit =
-  [%mel.raw
-    {|function (url) {
-  var state = window.__cinepulseScroll;
-  if (state) window.removeEventListener("scroll", state.listener);
-  state = window.__cinepulseScroll = { url: url, y: window.scrollY, listener: function () { state.y = window.scrollY } };
-  window.addEventListener("scroll", state.listener, { passive: true });
-}|}]
-
-let restore_scroll : unit -> unit =
-  [%mel.raw
-    {|function () {
-  var state = window.__cinepulseScroll;
-  if (!state) return;
-  window.removeEventListener("scroll", state.listener);
-  window.__cinepulseScroll = null;
-  if (location.pathname + location.search === state.url) window.scrollTo(0, state.y);
-}|}]
-
 let after : int -> (unit -> unit) -> unit -> unit =
   [%mel.raw
     {|function (ms, callback) {
@@ -165,8 +146,6 @@ let () =
   Bridge.emit := emit;
   Bridge.scroll_row := scroll_row;
   Bridge.on_visible := on_visible;
-  Bridge.follow_scroll := follow_scroll;
-  Bridge.restore_scroll := restore_scroll;
   Bridge.after := after;
   Bridge.share := share;
   Bridge.toggle_fullscreen := toggle_fullscreen;

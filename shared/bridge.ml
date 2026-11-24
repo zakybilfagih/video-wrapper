@@ -17,11 +17,6 @@ let scroll_row : (string -> int -> unit) ref = ref (fun _ _ -> ())
    gives the function that stops watching. *)
 let on_visible : (string -> (unit -> unit) -> unit -> unit) ref = ref (fun _ _ () -> ())
 
-(* Starts tracking the scroll for a navigation to this URL; restore_scroll, once that
-   page shows, scrolls to where the user went meanwhile, and stops tracking. *)
-let follow_scroll : (string -> unit) ref = ref (fun _ -> ())
-let restore_scroll : (unit -> unit) ref = ref (fun () -> ())
-
 (* Calls the function after this many milliseconds; gives the function that cancels. *)
 let after : (int -> (unit -> unit) -> unit -> unit) ref = ref (fun _ _ () -> ())
 
