@@ -80,6 +80,13 @@ let card ~me ?(landscape = false) ?(badge = false) ?(refresh = false) (card : Tm
 let skeleton ?(landscape = false) () =
   <div class_=(if landscape then "animate-pulse rounded-xl bg-gray-800 aspect-video" else "animate-pulse rounded-xl bg-gray-800 aspect-[2/3]") />
 
+(* The cards that stand for the next page of an infinite list; the first one is the
+   element Infinite_scroll watches. *)
+let next_page_skeletons ?(landscape = false) () =
+  Yuka.fragment
+    (<div id=Infinite_scroll.skeleton_id class_=(if landscape then "animate-pulse rounded-xl bg-gray-800 aspect-video" else "animate-pulse rounded-xl bg-gray-800 aspect-[2/3]") />
+     :: List.init 9 (fun _ -> skeleton ~landscape ()))
+
 let skeleton_grid ?(landscape = false) ?(count = 10) () =
   <div class_=(if landscape then "grid gap-6 grid-cols-1" else grid_class)>
     (Yuka.fragment (List.init count (fun _ -> skeleton ~landscape ())))

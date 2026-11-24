@@ -384,12 +384,14 @@ let browse ~genre ~sort ~rating ~runtime ~year ~view ~pages ~(me : Loaders.me) (
         (await ~loading:<div class_="h-12" /> (Tmdb.genre_list Movie) (fun genres ->
              genre_pills ~current:genre ~link:(fun genre -> Routes.browse ?genre ~sort ~rating ~runtime ~year ~view ()) genres))
         (await ~loading:(skeleton_grid ~landscape ()) (discover_pages Movie params pages) (fun (cards, more) ->
+             let next = if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None in
              <div class_="space-y-8">
                <div class_=(if landscape then "grid gap-6 grid-cols-1" else "grid gap-6 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5")>
                  (Yuka.fragment (List.map (card ~me ~landscape) cards))
+                 (if next = None then Yuka.empty else next_page_skeletons ~landscape ())
                </div>
                <Yuka.Client>
-                 <Infinite_scroll next=(if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None) />
+                 <Infinite_scroll next />
                </Yuka.Client>
              </div>))
       </div>)
@@ -416,10 +418,14 @@ let tv_shows ~genre ~sort ~rating ~pages ~(me : Loaders.me) () =
         (await ~loading:<div class_="h-12" /> (Tmdb.genre_list Tv) (fun genres ->
              genre_pills ~current:genre ~link:(fun genre -> Routes.tv_shows ?genre ~sort ~rating ()) genres))
         (await ~loading:(skeleton_grid ()) (discover_pages Tv params pages) (fun (cards, more) ->
+             let next = if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None in
              <div class_="space-y-8">
-               <div class_=grid_class>(Yuka.fragment (List.map (card ~me) cards))</div>
+               <div class_=grid_class>
+                 (Yuka.fragment (List.map (card ~me) cards))
+                 (if next = None then Yuka.empty else next_page_skeletons ())
+               </div>
                <Yuka.Client>
-                 <Infinite_scroll next=(if more && pages < max_pages then Some (link ~pages:(pages + 1) ()) else None) />
+                 <Infinite_scroll next />
                </Yuka.Client>
              </div>))
       </div>)

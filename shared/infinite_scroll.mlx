@@ -1,14 +1,24 @@
-(* Loads [next], the same list with one more page, when the end of the list comes into
-   view. The URL keeps the number of pages, so a reload or Back shows them all. *)
+(* Loads [next], the same list with one more page, when the first skeleton card after
+   the list (the element with id [skeleton_id]) comes into view.
+   The URL keeps the number of pages, so a reload or Back shows them all.
+
+   Yuka's keep_scroll puts the page back where it was when the navigation started, so
+   the scroll the user made while the page loaded would be undone. Bridge.follow_scroll
+   tracks it, and the island of the new page scrolls back to it. *)
+
+let skeleton_id = "next-page"
 
 let[@client] make ~(next : string option) () =
-  Yuka.with_unique_id (fun id ->
-      Yuka.Effect.after ~cleanup:(fun stop -> stop ()) (fun () ->
-          match next with
-          | Some url -> !Bridge.on_visible id (fun () -> Yuka.Browser.navigate ~replace:true ~keep_scroll:true url)
-          | None -> fun () -> ());
-      <div id class_="h-20 flex items-center justify-center">
-        (match next with
-         | Some _ -> <div class_="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-primary" />
-         | None -> Yuka.empty)
-      </div>)
+  Yuka.Effect.after ~cleanup:(fun stop -> stop ()) (fun () ->
+      !Bridge.restore_scroll ();
+      match next with
+      | Some url ->
+          !Bridge.on_visible skeleton_id (fun () ->
+              !Bridge.follow_scroll url;
+              Yuka.Browser.navigate ~replace:true ~keep_scroll:true url)
+      | None -> fun () -> ());
+  <div class_="h-20 flex items-center justify-center">
+    (match next with
+     | Some _ -> <div class_="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-primary" />
+     | None -> Yuka.empty)
+  </div>
